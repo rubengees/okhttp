@@ -17,7 +17,6 @@ package okhttp3;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLSocket;
 import okhttp3.internal.Util;
@@ -261,9 +260,11 @@ public final class ConnectionSpec {
       return "ConnectionSpec()";
     }
 
+    String cipherSuitesString = cipherSuites != null ? cipherSuites().toString() : "[all enabled]";
+    String tlsVersionsString = tlsVersions != null ? tlsVersions().toString() : "[all enabled]";
     return "ConnectionSpec("
-        + "cipherSuites=" + Objects.toString(cipherSuites(), "[all enabled]")
-        + ", tlsVersions=" + Objects.toString(tlsVersions(), "[all enabled]")
+        + "cipherSuites=" + cipherSuitesString
+        + ", tlsVersions=" + tlsVersionsString
         + ", supportsTlsExtensions=" + supportsTlsExtensions
         + ")";
   }

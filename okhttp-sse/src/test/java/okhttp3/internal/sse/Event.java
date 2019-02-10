@@ -44,8 +44,8 @@ final class Event {
   }
 
   @Override public int hashCode() {
-    int result = Objects.hashCode(id);
-    result = 31 * result + Objects.hashCode(type);
+    int result = (id != null ? id.hashCode() : 0);
+    result = 31 * result + (type != null ? type.hashCode() : 0);
     result = 31 * result + data.hashCode();
     return result;
   }
