@@ -217,7 +217,7 @@ public class Platform {
       return jdk9;
     }
 
-    Platform jdkWithJettyBoot = Jdk8WithJettyBootPlatform.buildIfSupported();
+    Platform jdkWithJettyBoot = JdkWithJettyBootPlatform.buildIfSupported();
 
     if (jdkWithJettyBoot != null) {
       return jdkWithJettyBoot;

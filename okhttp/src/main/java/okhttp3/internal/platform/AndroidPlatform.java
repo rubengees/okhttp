@@ -38,6 +38,7 @@ import okhttp3.internal.Util;
 import okhttp3.internal.tls.CertificateChainCleaner;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static okhttp3.internal.Util.assertionError;
 
 /** Android 5+. */
 class AndroidPlatform extends Platform {
@@ -161,7 +162,7 @@ class AndroidPlatform extends Platform {
     } catch (ClassNotFoundException | NoSuchMethodException e) {
       return super.isCleartextTrafficPermitted(hostname);
     } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-      throw new AssertionError("unable to determine cleartext support", e);
+      throw assertionError("unable to determine cleartext support", e);
     }
   }
 

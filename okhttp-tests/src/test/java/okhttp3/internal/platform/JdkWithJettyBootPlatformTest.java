@@ -21,11 +21,11 @@ import static okhttp3.internal.platform.PlatformTest.getPlatform;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assume.assumeTrue;
 
-public class Jdk8WithJettyBootPlatformTest {
+public class JdkWithJettyBootPlatformTest {
   @Test
   public void testBuildsWithJettyBoot() {
     assumeTrue(getPlatform().equals("jdk-with-jetty-boot"));
 
-    assertNotNull(Jdk8WithJettyBootPlatform.buildIfSupported());
+    assertNotNull(JdkWithJettyBootPlatform.buildIfSupported());
   }
 }

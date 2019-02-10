@@ -484,6 +484,16 @@ public final class Util {
     return (int) millis;
   }
 
+  public static AssertionError assertionError(String message, Exception e) {
+    AssertionError assertionError = new AssertionError(message);
+    try {
+      assertionError.initCause(e);
+    } catch (IllegalStateException ise) {
+      // ignored, shouldn't happen
+    }
+    return assertionError;
+  }
+
   public static int decodeHexDigit(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -645,7 +655,7 @@ public final class Util {
       }
       return (X509TrustManager) trustManagers[0];
     } catch (GeneralSecurityException e) {
-      throw new AssertionError("No System TLS", e); // The system has no TLS. Just give up.
+      throw assertionError("No System TLS", e); // The system has no TLS. Just give up.
     }
   }
 
