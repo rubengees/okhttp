@@ -44,15 +44,16 @@ class AndroidPlatform extends Platform {
   private static final int MAX_LOG_LENGTH = 4000;
 
   private final Class<?> sslParametersClass;
-  private final Method setUseSessionTickets;
-  private final Method setHostname;
-  private final Method getAlpnSelectedProtocol;
-  private final Method setAlpnProtocols;
+  private final OptionalMethod<Socket> setUseSessionTickets;
+  private final OptionalMethod<Socket> setHostname;
+  private final OptionalMethod<Socket> getAlpnSelectedProtocol;
+  private final OptionalMethod<Socket> setAlpnProtocols;
 
   private final CloseGuard closeGuard = CloseGuard.get();
 
-  AndroidPlatform(Class<?> sslParametersClass, Method setUseSessionTickets, Method setHostname,
-      Method getAlpnSelectedProtocol, Method setAlpnProtocols) {
+  AndroidPlatform(Class<?> sslParametersClass, OptionalMethod<Socket> setUseSessionTickets,
+      OptionalMethod<Socket> setHostname, OptionalMethod<Socket> getAlpnSelectedProtocol,
+      OptionalMethod<Socket> setAlpnProtocols) {
     this.sslParametersClass = sslParametersClass;
     this.setUseSessionTickets = setUseSessionTickets;
     this.setHostname = setHostname;
@@ -102,28 +103,25 @@ class AndroidPlatform extends Platform {
 
   @Override public void configureTlsExtensions(
       SSLSocket sslSocket, String hostname, List<Protocol> protocols) {
-    try {
-      // Enable SNI and session tickets.
-      if (hostname != null) {
-        setUseSessionTickets.invoke(sslSocket, true);
-        // This is SSLParameters.setServerNames() in API 24+.
-        setHostname.invoke(sslSocket, hostname);
-      }
+    // Enable SNI and session tickets.
+    if (hostname != null) {
+      setUseSessionTickets.invokeOptionalWithoutCheckedException(sslSocket, true);
+      // This is SSLParameters.setServerNames() in API 24+.
+      setHostname.invokeOptionalWithoutCheckedException(sslSocket, hostname);
+    }
 
-      // Enable ALPN.
-      setAlpnProtocols.invoke(sslSocket, concatLengthPrefixed(protocols));
-    } catch (IllegalAccessException | InvocationTargetException e) {
-      throw new AssertionError(e);
+    // Enable ALPN.
+    if (setAlpnProtocols.isSupported(sslSocket)) {
+      Object[] parameters = {concatLengthPrefixed(protocols)};
+      setAlpnProtocols.invokeWithoutCheckedException(sslSocket, parameters);
     }
   }
 
   @Override public @Nullable String getSelectedProtocol(SSLSocket socket) {
-    try {
-      byte[] alpnResult = (byte[]) getAlpnSelectedProtocol.invoke(socket);
-      return alpnResult != null ? new String(alpnResult, UTF_8) : null;
-    } catch (IllegalAccessException | InvocationTargetException e) {
-      throw new AssertionError(e);
-    }
+    if (!getAlpnSelectedProtocol.isSupported(socket)) return null;
+
+    byte[] alpnResult = (byte[]) getAlpnSelectedProtocol.invokeWithoutCheckedException(socket);
+    return alpnResult != null ? new String(alpnResult, UTF_8) : null;
   }
 
   @Override public void log(int level, String message, @Nullable Throwable t) {
@@ -204,28 +202,21 @@ class AndroidPlatform extends Platform {
 
   public static @Nullable Platform buildIfSupported() {
     // Attempt to find Android 5+ APIs.
-    Class<?> sslParametersClass;
-    Class<?> sslSocketClass;
     try {
-      sslParametersClass = Class.forName("com.android.org.conscrypt.SSLParametersImpl");
-      sslSocketClass = Class.forName("com.android.org.conscrypt.OpenSSLSocketImpl");
+      Class<?> sslParametersClass = Class.forName("com.android.org.conscrypt.SSLParametersImpl");
+      OptionalMethod<Socket> setUseSessionTickets = new OptionalMethod<>(
+          null, "setUseSessionTickets", boolean.class);
+      OptionalMethod<Socket> setHostname = new OptionalMethod<>(
+          null, "setHostname", String.class);
+      OptionalMethod<Socket> getAlpnSelectedProtocol = new OptionalMethod<>(
+          byte[].class, "getAlpnSelectedProtocol");
+      OptionalMethod<Socket> setAlpnProtocols = new OptionalMethod<>(
+          null, "setAlpnProtocols", byte[].class);
+      return new AndroidPlatform(sslParametersClass, setUseSessionTickets, setHostname,
+          getAlpnSelectedProtocol, setAlpnProtocols);
     } catch (ClassNotFoundException ignored) {
       return null; // Not an Android runtime.
     }
-    if (Build.VERSION.SDK_INT >= 21) {
-      try {
-        Method setUseSessionTickets = sslSocketClass.getDeclaredMethod(
-            "setUseSessionTickets", boolean.class);
-        Method setHostname = sslSocketClass.getMethod("setHostname", String.class);
-        Method getAlpnSelectedProtocol = sslSocketClass.getMethod("getAlpnSelectedProtocol");
-        Method setAlpnProtocols = sslSocketClass.getMethod("setAlpnProtocols", byte[].class);
-        return new AndroidPlatform(sslParametersClass, setUseSessionTickets, setHostname,
-            getAlpnSelectedProtocol, setAlpnProtocols);
-      } catch (NoSuchMethodException ignored) {
-      }
-    }
-    throw new IllegalStateException(
-        "Expected Android API level 21+ but was " + Build.VERSION.SDK_INT);
   }
 
   /**
