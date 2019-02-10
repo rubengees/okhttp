@@ -23,7 +23,7 @@ import okhttp3.internal.http.RecordingProxySelector;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertFalse;
 
 public final class AddressTest {
   private Dns dns = Dns.SYSTEM;
@@ -47,7 +47,7 @@ public final class AddressTest {
         authenticator, null, protocols, connectionSpecs, new RecordingProxySelector());
     Address b = new Address("square.com", 80, dns, socketFactory, null, null, null,
         authenticator, null, protocols, connectionSpecs, new RecordingProxySelector());
-    assertNotEquals(a, b);
+    assertFalse(a.equals(b));
   }
 
   @Test public void addressToString() throws Exception {

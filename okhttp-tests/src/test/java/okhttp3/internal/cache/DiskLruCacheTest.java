@@ -33,6 +33,7 @@ import okio.Okio;
 import okio.Source;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -1248,7 +1249,7 @@ public final class DiskLruCacheTest {
     a.close();
     iterator.remove();
 
-    assertNull(cache.get("a"));
+    assertEquals(null, cache.get("a"));
   }
 
   @Test public void iteratorRemoveBeforeNext() throws Exception {

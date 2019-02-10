@@ -1860,7 +1860,7 @@ public final class CacheTest {
 
     Response response2 = get(server.url("/"));
     assertEquals("A", response2.body().string());
-    assertNull(response2.header("Warning"));
+    assertEquals(null, response2.header("Warning"));
   }
 
   @Test public void getHeadersRetainsCached200LevelWarnings() throws Exception {
@@ -1905,7 +1905,7 @@ public final class CacheTest {
     long t0 = System.currentTimeMillis();
     Response response1 = get(server.url("/a"));
     assertEquals("A", response1.body().string());
-    assertNull(response1.header("Allow"));
+    assertEquals(null, response1.header("Allow"));
     assertEquals(0, response1.receivedResponseAtMillis() - t0, 250.0);
 
     // A conditional cache hit updates the cache.
@@ -2388,7 +2388,7 @@ public final class CacheTest {
     assertEquals("B", get(url).body().string());
     assertEquals("B", get(url).body().string());
 
-    assertNull(server.takeRequest().getHeader("If-None-Match"));
+    assertEquals(null, server.takeRequest().getHeader("If-None-Match"));
     assertEquals("v1", server.takeRequest().getHeader("If-None-Match"));
     assertEquals("v1", server.takeRequest().getHeader("If-None-Match"));
     assertEquals("v2", server.takeRequest().getHeader("If-None-Match"));
@@ -2434,7 +2434,7 @@ public final class CacheTest {
     Response response2 = get(server.url("/"));
     assertEquals("abcd", response2.body().string());
 
-    assertNull(server.takeRequest().getHeader("If-None-Match"));
+    assertEquals(null, server.takeRequest().getHeader("If-None-Match"));
     assertEquals("α", server.takeRequest().getHeader("If-None-Match"));
   }
 

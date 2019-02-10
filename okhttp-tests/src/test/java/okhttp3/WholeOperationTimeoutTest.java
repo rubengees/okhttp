@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okio.BufferedSink;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 

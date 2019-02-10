@@ -105,13 +105,13 @@ public final class FormBody extends RequestBody {
   public static final class Builder {
     private final List<String> names = new ArrayList<>();
     private final List<String> values = new ArrayList<>();
-    private final @Nullable Charset charset;
+    private final Charset charset;
 
     public Builder() {
       this(null);
     }
 
-    public Builder(@Nullable Charset charset) {
+    public Builder(Charset charset) {
       this.charset = charset;
     }
 

@@ -246,6 +246,7 @@ final class WebSocketWriter {
       return sink.timeout();
     }
 
+    @SuppressWarnings("PointlessBitwiseExpression")
     @Override public void close() throws IOException {
       if (closed) throw new IOException("closed");
 

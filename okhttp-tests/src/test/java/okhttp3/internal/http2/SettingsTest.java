@@ -20,7 +20,6 @@ import org.junit.Test;
 import static okhttp3.internal.http2.Settings.DEFAULT_INITIAL_WINDOW_SIZE;
 import static okhttp3.internal.http2.Settings.MAX_CONCURRENT_STREAMS;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 public final class SettingsTest {
   @Test public void unsetField() {
@@ -34,9 +33,9 @@ public final class SettingsTest {
     settings.set(Settings.HEADER_TABLE_SIZE, 8096);
     assertEquals(8096, settings.getHeaderTableSize());
 
-    assertTrue(settings.getEnablePush(true));
+    assertEquals(true, settings.getEnablePush(true));
     settings.set(Settings.ENABLE_PUSH, 1);
-    assertTrue(settings.getEnablePush(false));
+    assertEquals(true, settings.getEnablePush(false));
     settings.clear();
 
     assertEquals(-3, settings.getMaxConcurrentStreams(-3));

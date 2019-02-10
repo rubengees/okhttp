@@ -351,7 +351,7 @@ public final class CallTest {
     assertEquals("POST", recordedRequest.getMethod());
     assertEquals(0, recordedRequest.getBody().size());
     assertEquals("0", recordedRequest.getHeader("Content-Length"));
-    assertNull(recordedRequest.getHeader("Content-Type"));
+    assertEquals(null, recordedRequest.getHeader("Content-Type"));
   }
 
   @Test public void postZerolength_HTTPS() throws Exception {
@@ -494,7 +494,7 @@ public final class CallTest {
     assertEquals("DELETE", recordedRequest.getMethod());
     assertEquals(0, recordedRequest.getBody().size());
     assertEquals("0", recordedRequest.getHeader("Content-Length"));
-    assertNull(recordedRequest.getHeader("Content-Type"));
+    assertEquals(null, recordedRequest.getHeader("Content-Type"));
   }
 
   @Test public void delete_HTTPS() throws Exception {
@@ -612,7 +612,7 @@ public final class CallTest {
     executeSynchronously(request).assertCode(200);
 
     RecordedRequest recordedRequest = server.takeRequest();
-    assertNull(recordedRequest.getHeader("Content-Type"));
+    assertEquals(null, recordedRequest.getHeader("Content-Type"));
     assertEquals("3", recordedRequest.getHeader("Content-Length"));
     assertEquals("abc", recordedRequest.getBody().readUtf8());
   }

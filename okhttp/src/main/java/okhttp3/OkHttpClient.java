@@ -150,16 +150,16 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
         return pool.connectionBecameIdle(connection);
       }
 
-      @Override public void acquire(ConnectionPool pool, Address address,
-          StreamAllocation streamAllocation, @Nullable Route route) {
-        pool.acquire(address, streamAllocation, route);
+      @Override public RealConnection get(ConnectionPool pool, Address address,
+          StreamAllocation streamAllocation, Route route) {
+        return pool.get(address, streamAllocation, route);
       }
 
       @Override public boolean equalsNonHost(Address a, Address b) {
         return a.equalsNonHost(b);
       }
 
-      @Override public @Nullable Socket deduplicate(
+      @Override public Socket deduplicate(
           ConnectionPool pool, Address address, StreamAllocation streamAllocation) {
         return pool.deduplicate(address, streamAllocation);
       }
@@ -346,7 +346,7 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
     return cache;
   }
 
-  @Nullable InternalCache internalCache() {
+  InternalCache internalCache() {
     return cache != null ? cache.internalCache : internalCache;
   }
 

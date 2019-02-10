@@ -297,7 +297,6 @@ public final class ConnectionSpecTest {
         + "supportsTlsExtensions=true)", connectionSpec.toString());
   }
 
-  @SafeVarargs
   private static <T> Set<T> set(T... values) {
     return new LinkedHashSet<>(Arrays.asList(values));
   }

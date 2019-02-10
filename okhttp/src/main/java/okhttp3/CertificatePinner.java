@@ -22,12 +22,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import javax.annotation.Nullable;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import okhttp3.internal.tls.CertificateChainCleaner;
 import okio.ByteString;
+
+import static okhttp3.internal.Util.equal;
 
 /**
  * Constrains which certificates are trusted. Pinning certificates defends against attacks on
@@ -138,8 +139,7 @@ public final class CertificatePinner {
   @Override public boolean equals(@Nullable Object other) {
     if (other == this) return true;
     return other instanceof CertificatePinner
-        && (Objects.equals(certificateChainCleaner,
-        ((CertificatePinner) other).certificateChainCleaner)
+        && (equal(certificateChainCleaner, ((CertificatePinner) other).certificateChainCleaner)
         && pins.equals(((CertificatePinner) other).pins));
   }
 
@@ -228,7 +228,7 @@ public final class CertificatePinner {
   /** Returns a certificate pinner that uses {@code certificateChainCleaner}. */
   CertificatePinner withCertificateChainCleaner(
       @Nullable CertificateChainCleaner certificateChainCleaner) {
-    return Objects.equals(this.certificateChainCleaner, certificateChainCleaner)
+    return equal(this.certificateChainCleaner, certificateChainCleaner)
         ? this
         : new CertificatePinner(pins, certificateChainCleaner);
   }

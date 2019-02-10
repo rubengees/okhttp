@@ -250,7 +250,7 @@ public class Platform {
         Field field = c.getDeclaredField(fieldName);
         field.setAccessible(true);
         Object value = field.get(instance);
-        if (!fieldType.isInstance(value)) return null;
+        if (value == null || !fieldType.isInstance(value)) return null;
         return fieldType.cast(value);
       } catch (NoSuchFieldException ignored) {
       } catch (IllegalAccessException e) {

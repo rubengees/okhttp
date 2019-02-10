@@ -24,7 +24,6 @@ import java.net.URI;
 import java.net.URLConnection;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.Nullable;
 import okhttp3.internal.huc.JavaApiConverter;
 
 /**
@@ -65,8 +64,7 @@ public class AndroidShimResponseCache extends ResponseCache {
     return JavaApiConverter.createJavaCacheResponse(okResponse);
   }
 
-  @Override public @Nullable CacheRequest put(
-      URI uri, URLConnection urlConnection) throws IOException {
+  @Override public CacheRequest put(URI uri, URLConnection urlConnection) throws IOException {
     Response okResponse = JavaApiConverter.createOkResponseForCachePut(uri, urlConnection);
     if (okResponse == null) {
       // The URLConnection is not cacheable or could not be converted. Stop.

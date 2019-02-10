@@ -1542,7 +1542,7 @@ public final class ResponseCacheTest {
 
     URLConnection connection2 = openConnection(server.url("/").url());
     assertEquals("A", readAscii(connection2));
-    assertNull(connection2.getHeaderField("Warning"));
+    assertEquals(null, connection2.getHeaderField("Warning"));
   }
 
   @Test public void getHeadersRetainsCached200LevelWarnings() throws Exception {
@@ -1599,7 +1599,7 @@ public final class ResponseCacheTest {
     // still valid
     HttpURLConnection connection1 = openConnection(server.url("/a").url());
     assertEquals("A", readAscii(connection1));
-    assertNull(connection1.getHeaderField("Allow"));
+    assertEquals(null, connection1.getHeaderField("Allow"));
 
     // conditional cache hit; The cached data should be returned, but the cache is not updated.
     HttpURLConnection connection2 = openConnection(server.url("/a").url());

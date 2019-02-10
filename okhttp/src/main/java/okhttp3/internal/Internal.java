@@ -53,12 +53,12 @@ public abstract class Internal {
 
   public abstract void setCache(OkHttpClient.Builder builder, InternalCache internalCache);
 
-  public abstract void acquire(ConnectionPool pool, Address address,
-      StreamAllocation streamAllocation, @Nullable Route route);
+  public abstract RealConnection get(ConnectionPool pool, Address address,
+      StreamAllocation streamAllocation, Route route);
 
   public abstract boolean equalsNonHost(Address a, Address b);
 
-  public abstract @Nullable Socket deduplicate(
+  public abstract Socket deduplicate(
       ConnectionPool pool, Address address, StreamAllocation streamAllocation);
 
   public abstract void put(ConnectionPool pool, RealConnection connection);

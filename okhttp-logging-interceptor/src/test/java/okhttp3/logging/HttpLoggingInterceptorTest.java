@@ -18,6 +18,7 @@ package okhttp3.logging;
 import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 import javax.net.ssl.HostnameVerifier;
@@ -820,7 +821,7 @@ public final class HttpLoggingInterceptorTest {
     }
 
     void assertNoMoreLogs() {
-      assertEquals("More messages remain: " + logs.subList(index, logs.size()), index, logs.size());
+      assertTrue("More messages remain: " + logs.subList(index, logs.size()), index == logs.size());
     }
 
     @Override public void log(String message) {

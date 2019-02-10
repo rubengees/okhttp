@@ -1495,7 +1495,7 @@ public final class UrlConnectionCacheTest {
 
     URLConnection connection2 = urlFactory.open(server.url("/").url());
     assertEquals("A", readAscii(connection2));
-    assertNull(connection2.getHeaderField("Warning"));
+    assertEquals(null, connection2.getHeaderField("Warning"));
   }
 
   @Test public void getHeadersRetainsCached200LevelWarnings() throws Exception {
@@ -1533,7 +1533,7 @@ public final class UrlConnectionCacheTest {
     // cache miss; seed the cache
     HttpURLConnection connection1 = urlFactory.open(server.url("/a").url());
     assertEquals("A", readAscii(connection1));
-    assertNull(connection1.getHeaderField("Allow"));
+    assertEquals(null, connection1.getHeaderField("Allow"));
 
     // conditional cache hit; update the cache
     HttpURLConnection connection2 = urlFactory.open(server.url("/a").url());

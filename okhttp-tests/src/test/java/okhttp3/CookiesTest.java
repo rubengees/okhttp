@@ -36,7 +36,6 @@ import org.junit.Test;
 import static java.net.CookiePolicy.ACCEPT_ORIGINAL_SERVER;
 import static okhttp3.TestUtil.defaultClient;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -67,12 +66,12 @@ public class CookiesTest {
     HttpCookie cookie = cookies.get(0);
     assertEquals("a", cookie.getName());
     assertEquals("android", cookie.getValue());
-    assertNull(cookie.getComment());
-    assertNull(cookie.getCommentURL());
-    assertFalse(cookie.getDiscard());
+    assertEquals(null, cookie.getComment());
+    assertEquals(null, cookie.getCommentURL());
+    assertEquals(false, cookie.getDiscard());
     assertTrue(cookie.getMaxAge() > 100000000000L);
     assertEquals("/path", cookie.getPath());
-    assertTrue(cookie.getSecure());
+    assertEquals(true, cookie.getSecure());
     assertEquals(0, cookie.getVersion());
   }
 
@@ -99,11 +98,11 @@ public class CookiesTest {
     HttpCookie cookie = cookies.get(0);
     assertEquals("a", cookie.getName());
     assertEquals("android", cookie.getValue());
-    assertNull(cookie.getCommentURL());
-    assertFalse(cookie.getDiscard());
+    assertEquals(null, cookie.getCommentURL());
+    assertEquals(false, cookie.getDiscard());
     assertEquals(60.0, cookie.getMaxAge(), 1.0); // Converting to a fixed date can cause rounding!
     assertEquals("/path", cookie.getPath());
-    assertTrue(cookie.getSecure());
+    assertEquals(true, cookie.getSecure());
   }
 
   @Test public void testQuotedAttributeValues() throws Exception {
@@ -134,7 +133,7 @@ public class CookiesTest {
     assertEquals("android", cookie.getValue());
     assertEquals(60.0, cookie.getMaxAge(), 1.0); // Converting to a fixed date can cause rounding!
     assertEquals("/path", cookie.getPath());
-    assertTrue(cookie.getSecure());
+    assertEquals(true, cookie.getSecure());
   }
 
   @Test public void testSendingCookiesFromStore() throws Exception {
