@@ -35,13 +35,13 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import okhttp3.internal.DeferredTrailers;
 import okhttp3.internal.Internal;
+import okhttp3.internal.Transmitter;
 import okhttp3.internal.Util;
 import okhttp3.internal.cache.InternalCache;
 import okhttp3.internal.connection.RealConnection;
 import okhttp3.internal.connection.RouteDatabase;
-import okhttp3.internal.connection.StreamAllocation;
-import okhttp3.internal.http.HttpCodec;
 import okhttp3.internal.platform.Platform;
 import okhttp3.internal.proxy.NullProxySelector;
 import okhttp3.internal.tls.CertificateChainCleaner;
@@ -151,8 +151,8 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
       }
 
       @Override public RealConnection get(ConnectionPool pool, Address address,
-          StreamAllocation streamAllocation, Route route) {
-        return pool.get(address, streamAllocation, route);
+          Transmitter transmitter, Route route) {
+        return pool.get(address, transmitter, route);
       }
 
       @Override public boolean equalsNonHost(Address a, Address b) {
@@ -160,8 +160,8 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
       }
 
       @Override public Socket deduplicate(
-          ConnectionPool pool, Address address, StreamAllocation streamAllocation) {
-        return pool.deduplicate(address, streamAllocation);
+          ConnectionPool pool, Address address, Transmitter transmitter) {
+        return pool.deduplicate(address, transmitter);
       }
 
       @Override public void put(ConnectionPool pool, RealConnection connection) {
@@ -185,8 +185,8 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
         return e.getMessage().startsWith(HttpUrl.Builder.INVALID_HOST);
       }
 
-      @Override public StreamAllocation streamAllocation(Call call) {
-        return ((RealCall) call).streamAllocation();
+      @Override public Transmitter transmitter(Call call) {
+        return ((RealCall) call).transmitter();
       }
 
       @Override public @Nullable IOException timeoutExit(Call call, @Nullable IOException e) {
@@ -197,8 +197,9 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
         return RealCall.newRealCall(client, originalRequest, true);
       }
 
-      @Override public void initCodec(Response.Builder responseBuilder, HttpCodec httpCodec) {
-        responseBuilder.initCodec(httpCodec);
+      @Override public void initDeferredTrailers(
+          Response.Builder responseBuilder, DeferredTrailers deferredTrailers) {
+        responseBuilder.initDeferredTrailers(deferredTrailers);
       }
     };
   }
