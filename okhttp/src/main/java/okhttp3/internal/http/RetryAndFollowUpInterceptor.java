@@ -23,6 +23,7 @@ import java.net.ProtocolException;
 import java.net.Proxy;
 import java.net.SocketTimeoutException;
 import java.security.cert.CertificateException;
+import javax.annotation.Nullable;
 import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import okhttp3.HttpUrl;
@@ -32,7 +33,9 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.Route;
+import okhttp3.internal.Internal;
 import okhttp3.internal.Transmitter;
+import okhttp3.internal.connection.Exchange;
 import okhttp3.internal.connection.RouteException;
 import okhttp3.internal.http2.ConnectionShutdownException;
 
@@ -45,6 +48,7 @@ import static java.net.HttpURLConnection.HTTP_SEE_OTHER;
 import static java.net.HttpURLConnection.HTTP_UNAUTHORIZED;
 import static java.net.HttpURLConnection.HTTP_UNAVAILABLE;
 import static okhttp3.internal.Util.closeQuietly;
+import static okhttp3.internal.Util.sameConnection;
 import static okhttp3.internal.http.StatusLine.HTTP_PERM_REDIRECT;
 import static okhttp3.internal.http.StatusLine.HTTP_TEMP_REDIRECT;
 
@@ -70,39 +74,35 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
     RealInterceptorChain realChain = (RealInterceptorChain) chain;
     Transmitter transmitter = realChain.transmitter();
 
-    transmitter.newStreamAllocation(request);
-
     int followUpCount = 0;
     Response priorResponse = null;
     while (true) {
+      transmitter.prepareToConnect(request);
+
       if (transmitter.isCanceled()) {
-        transmitter.releaseStreamAllocation(true);
         throw new IOException("Canceled");
       }
 
       Response response;
-      boolean releaseConnection = true;
+      boolean success = false;
       try {
         response = realChain.proceed(request, transmitter, null);
-        releaseConnection = false;
+        success = true;
       } catch (RouteException e) {
         // The attempt to connect via a route failed. The request will not have been sent.
         if (!recover(e.getLastConnectException(), transmitter, false, request)) {
           throw e.getFirstConnectException();
         }
-        releaseConnection = false;
         continue;
       } catch (IOException e) {
         // An attempt to communicate with a server failed. The request may have been sent.
         boolean requestSendStarted = !(e instanceof ConnectionShutdownException);
         if (!recover(e, transmitter, requestSendStarted, request)) throw e;
-        releaseConnection = false;
         continue;
       } finally {
-        // We're throwing an unchecked exception. Release any resources.
-        if (releaseConnection) {
-          transmitter.streamFailed(null);
-          transmitter.releaseStreamAllocation(true);
+        // The network call threw an exception. Release any resources.
+        if (!success) {
+          transmitter.exchangeDoneDueToException();
         }
       }
 
@@ -117,35 +117,30 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
 
       Request followUp;
       try {
-        followUp = followUpRequest(response, transmitter.route());
+        Exchange exchange = Internal.instance.exchange(response);
+        Route route = exchange != null ? exchange.connection().route() : null;
+        followUp = followUpRequest(response, route);
       } catch (IOException e) {
-        transmitter.releaseStreamAllocation(true);
         throw e;
       }
 
       if (followUp == null) {
-        transmitter.releaseStreamAllocation(true);
         return response;
       }
 
       closeQuietly(response.body());
 
+      if (transmitter.hasExchange()) {
+        throw new IllegalStateException("Closing the body of " + response
+            + " didn't close its backing stream. Bad interceptor?");
+      }
+
       if (++followUpCount > MAX_FOLLOW_UPS) {
-        transmitter.releaseStreamAllocation(true);
         throw new ProtocolException("Too many follow-up requests: " + followUpCount);
       }
 
       if (followUp.body() instanceof UnrepeatableRequestBody) {
-        transmitter.releaseStreamAllocation(true);
         throw new HttpRetryException("Cannot retry streamed HTTP body", response.code());
-      }
-
-      if (!sameConnection(response, followUp.url())) {
-        transmitter.releaseStreamAllocation(false);
-        transmitter.newStreamAllocation(followUp);
-      } else if (transmitter.hasCodec()) {
-        throw new IllegalStateException("Closing the body of " + response
-            + " didn't close its backing stream. Bad interceptor?");
       }
 
       request = followUp;
@@ -161,8 +156,6 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
    */
   private boolean recover(IOException e, Transmitter transmitter,
       boolean requestSendStarted, Request userRequest) {
-    transmitter.streamFailed(e);
-
     // The application layer has forbidden retries.
     if (!client.retryOnConnectionFailure()) return false;
 
@@ -173,7 +166,7 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
     if (!isRecoverable(e, requestSendStarted)) return false;
 
     // No more routes to attempt.
-    if (!transmitter.hasMoreRoutes()) return false;
+    if (!transmitter.canRetry()) return false;
 
     // For failure recovery, use the same route selector with a new connection.
     return true;
@@ -221,7 +214,7 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
    * either add authentication headers, follow redirects or handle a client request timeout. If a
    * follow-up is either unnecessary or not applicable, this returns null.
    */
-  private Request followUpRequest(Response userResponse, Route route) throws IOException {
+  private Request followUpRequest(Response userResponse, @Nullable Route route) throws IOException {
     if (userResponse == null) throw new IllegalStateException();
     int responseCode = userResponse.code();
 
@@ -285,7 +278,7 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
         // When redirecting across hosts, drop all authentication headers. This
         // is potentially annoying to the application layer since they have no
         // way to retain them.
-        if (!sameConnection(userResponse, url)) {
+        if (!sameConnection(userResponse.request().url(), url)) {
           requestBuilder.removeHeader("Authorization");
         }
 
@@ -349,16 +342,5 @@ public final class RetryAndFollowUpInterceptor implements Interceptor {
     }
 
     return Integer.MAX_VALUE;
-  }
-
-  /**
-   * Returns true if an HTTP request for {@code followUp} can reuse the connection used by this
-   * engine.
-   */
-  private boolean sameConnection(Response response, HttpUrl followUp) {
-    HttpUrl url = response.request().url();
-    return url.host().equals(followUp.host())
-        && url.port() == followUp.port()
-        && url.scheme().equals(followUp.scheme());
   }
 }

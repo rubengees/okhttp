@@ -16,11 +16,13 @@
 package okhttp3.internal.http;
 
 import java.io.IOException;
+import javax.annotation.Nullable;
 import okhttp3.Headers;
 import okhttp3.Request;
 import okhttp3.Response;
-import okhttp3.ResponseBody;
+import okhttp3.internal.connection.RealConnection;
 import okio.Sink;
+import okio.Source;
 
 /** Encodes HTTP requests and decodes HTTP responses. */
 public interface HttpCodec {
@@ -30,6 +32,9 @@ public interface HttpCodec {
    * connection.
    */
   int DISCARD_STREAM_TIMEOUT_MILLIS = 100;
+
+  /** Returns the connection that carries this codec. */
+  RealConnection connection();
 
   /** Returns an output stream where the request body can be streamed. */
   Sink createRequestBody(Request request, long contentLength);
@@ -49,10 +54,11 @@ public interface HttpCodec {
    * @param expectContinue true to return null if this is an intermediate response with a "100"
    *     response code. Otherwise this method never returns null.
    */
-  Response.Builder readResponseHeaders(boolean expectContinue) throws IOException;
+  @Nullable Response.Builder readResponseHeaders(boolean expectContinue) throws IOException;
 
-  /** Returns a stream that reads the response body. */
-  ResponseBody openResponseBody(Response response) throws IOException;
+  long reportedContentLength(Response response) throws IOException;
+
+  Source openResponseBodySource(Response response) throws IOException;
 
   /** Returns the trailers after the HTTP response. May be empty. */
   Headers trailers() throws IOException;

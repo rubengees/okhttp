@@ -85,14 +85,14 @@ class JdkWithJettyBootPlatform extends Platform {
   public static Platform buildIfSupported() {
     // Find Jetty's ALPN extension for OpenJDK.
     try {
-      String negoClassName = "org.eclipse.jetty.alpn.ALPN";
-      Class<?> negoClass = Class.forName(negoClassName);
-      Class<?> providerClass = Class.forName(negoClassName + "$Provider");
-      Class<?> clientProviderClass = Class.forName(negoClassName + "$ClientProvider");
-      Class<?> serverProviderClass = Class.forName(negoClassName + "$ServerProvider");
-      Method putMethod = negoClass.getMethod("put", SSLSocket.class, providerClass);
-      Method getMethod = negoClass.getMethod("get", SSLSocket.class);
-      Method removeMethod = negoClass.getMethod("remove", SSLSocket.class);
+      String alpnClassName = "org.eclipse.jetty.alpn.ALPN";
+      Class<?> alpnClass = Class.forName(alpnClassName, true, null);
+      Class<?> providerClass = Class.forName(alpnClassName + "$Provider", true, null);
+      Class<?> clientProviderClass = Class.forName(alpnClassName + "$ClientProvider", true, null);
+      Class<?> serverProviderClass = Class.forName(alpnClassName + "$ServerProvider", true, null);
+      Method putMethod = alpnClass.getMethod("put", SSLSocket.class, providerClass);
+      Method getMethod = alpnClass.getMethod("get", SSLSocket.class);
+      Method removeMethod = alpnClass.getMethod("remove", SSLSocket.class);
       return new JdkWithJettyBootPlatform(
           putMethod, getMethod, removeMethod, clientProviderClass, serverProviderClass);
     } catch (ClassNotFoundException | NoSuchMethodException ignored) {
