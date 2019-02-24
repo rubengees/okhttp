@@ -41,7 +41,6 @@ import okhttp3.internal.tls.BasicTrustRootIndex;
 import okhttp3.internal.tls.CertificateChainCleaner;
 import okhttp3.internal.tls.TrustRootIndex;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static okhttp3.internal.Util.assertionError;
 
 /** Android 2.3 or better. */
@@ -128,7 +127,7 @@ class AndroidPlatform extends Platform {
     if (!getAlpnSelectedProtocol.isSupported(socket)) return null;
 
     byte[] alpnResult = (byte[]) getAlpnSelectedProtocol.invokeWithoutCheckedException(socket);
-    return alpnResult != null ? new String(alpnResult, UTF_8) : null;
+    return alpnResult != null ? new String(alpnResult, Util.UTF_8) : null;
   }
 
   @Override public void log(int level, String message, @Nullable Throwable t) {

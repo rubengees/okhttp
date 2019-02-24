@@ -15,13 +15,14 @@
  */
 package okhttp3;
 
+import okhttp3.internal.Util;
+
 import java.nio.charset.Charset;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import javax.annotation.Nullable;
 
-import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.util.Collections.singletonMap;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Locale.US;
@@ -85,7 +86,7 @@ public final class Challenge {
       } catch (Exception ignore) {
       }
     }
-    return ISO_8859_1;
+    return Util.ISO_8859_1;
   }
 
   @Override public boolean equals(@Nullable Object other) {

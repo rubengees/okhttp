@@ -25,8 +25,6 @@ import okio.ByteString;
 import okio.Okio;
 import okio.Source;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 public abstract class RequestBody {
   /** Returns the Content-Type header for this body. */
   public abstract @Nullable MediaType contentType();
@@ -47,11 +45,11 @@ public abstract class RequestBody {
    * and lacks a charset, this will use UTF-8.
    */
   public static RequestBody create(@Nullable MediaType contentType, String content) {
-    Charset charset = UTF_8;
+    Charset charset = Util.UTF_8;
     if (contentType != null) {
       charset = contentType.charset();
       if (charset == null) {
-        charset = UTF_8;
+        charset = Util.UTF_8;
         contentType = MediaType.parse(contentType + "; charset=utf-8");
       }
     }

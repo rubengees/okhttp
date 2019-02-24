@@ -27,8 +27,6 @@ import okio.Buffer;
 import okio.BufferedSource;
 import okio.ByteString;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 /**
  * A one-shot stream from the origin server to the client application with the raw bytes of the
  * response body. Each response body is supported by an active connection to the webserver. This
@@ -185,7 +183,7 @@ public abstract class ResponseBody implements Closeable {
 
   private Charset charset() {
     MediaType contentType = contentType();
-    return contentType != null ? contentType.charset(UTF_8) : UTF_8;
+    return contentType != null ? contentType.charset(Util.UTF_8) : Util.UTF_8;
   }
 
   @Override public void close() {
@@ -197,11 +195,11 @@ public abstract class ResponseBody implements Closeable {
    * and lacks a charset, this will use UTF-8.
    */
   public static ResponseBody create(@Nullable MediaType contentType, String content) {
-    Charset charset = UTF_8;
+    Charset charset = Util.UTF_8;
     if (contentType != null) {
       charset = contentType.charset();
       if (charset == null) {
-        charset = UTF_8;
+        charset = Util.UTF_8;
         contentType = MediaType.parse(contentType + "; charset=utf-8");
       }
     }

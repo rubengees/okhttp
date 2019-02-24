@@ -16,9 +16,9 @@
 package okhttp3;
 
 import java.nio.charset.Charset;
-import okio.ByteString;
 
-import static java.nio.charset.StandardCharsets.ISO_8859_1;
+import okhttp3.internal.Util;
+import okio.ByteString;
 
 /** Factory for HTTP authorization credentials. */
 public final class Credentials {
@@ -27,7 +27,7 @@ public final class Credentials {
 
   /** Returns an auth credential for the Basic scheme. */
   public static String basic(String username, String password) {
-    return basic(username, password, ISO_8859_1);
+    return basic(username, password, Util.ISO_8859_1);
   }
 
   public static String basic(String username, String password, Charset charset) {

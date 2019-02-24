@@ -56,10 +56,6 @@ import okio.ByteString;
 import okio.Options;
 import okio.Source;
 
-import static java.nio.charset.StandardCharsets.UTF_16BE;
-import static java.nio.charset.StandardCharsets.UTF_16LE;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 /** Junk drawer of utility methods. */
 public final class Util {
   public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
@@ -78,6 +74,10 @@ public final class Util {
       ByteString.decodeHex("ffff0000")  // UTF-32LE
   );
 
+  public static final Charset UTF_8 = Charset.forName("UTF-8");
+  public static final Charset ISO_8859_1 = Charset.forName("ISO-8859-1");
+  private static final Charset UTF_16_BE = Charset.forName("UTF-16BE");
+  private static final Charset UTF_16_LE = Charset.forName("UTF-16LE");
   private static final Charset UTF_32BE = Charset.forName("UTF-32BE");
   private static final Charset UTF_32LE = Charset.forName("UTF-32LE");
 
@@ -471,8 +471,8 @@ public final class Util {
   public static Charset bomAwareCharset(BufferedSource source, Charset charset) throws IOException {
     switch (source.select(UNICODE_BOMS)) {
       case 0: return UTF_8;
-      case 1: return UTF_16BE;
-      case 2: return UTF_16LE;
+      case 1: return UTF_16_BE;
+      case 2: return UTF_16_LE;
       case 3: return UTF_32BE;
       case 4: return UTF_32LE;
       case -1: return charset;

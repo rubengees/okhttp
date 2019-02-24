@@ -31,7 +31,6 @@ import okhttp3.internal.Util;
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase;
 import okio.Buffer;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static okhttp3.internal.Util.decodeHexDigit;
 import static okhttp3.internal.Util.delimiterOffset;
 import static okhttp3.internal.Util.skipLeadingAsciiWhitespace;
@@ -1728,7 +1727,7 @@ public final class HttpUrl {
           encodedCharBuffer = new Buffer();
         }
 
-        if (charset == null || charset.equals(UTF_8)) {
+        if (charset == null || charset.equals(Util.UTF_8)) {
           encodedCharBuffer.writeUtf8CodePoint(codePoint);
         } else {
           encodedCharBuffer.writeString(input, i, i + Character.charCount(codePoint), charset);
