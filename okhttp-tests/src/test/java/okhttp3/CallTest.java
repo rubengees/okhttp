@@ -56,6 +56,10 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLProtocolException;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
+import okhttp3.RecordingEventListener.CallEnd;
+import okhttp3.RecordingEventListener.ConnectionAcquired;
+import okhttp3.RecordingEventListener.ConnectionReleased;
+import okhttp3.RecordingEventListener.ResponseFailed;
 import okhttp3.internal.DoubleInetAddressDns;
 import okhttp3.internal.RecordingOkAuthenticator;
 import okhttp3.internal.Util;
@@ -72,6 +76,7 @@ import okhttp3.tls.HeldCertificate;
 import okio.Buffer;
 import okio.BufferedSink;
 import okio.BufferedSource;
+import okio.ForwardingSource;
 import okio.GzipSink;
 import okio.Okio;
 import org.junit.After;
@@ -104,8 +109,11 @@ public final class CallTest {
   @Rule public final MockWebServer server2 = new MockWebServer();
   @Rule public final InMemoryFileSystem fileSystem = new InMemoryFileSystem();
 
+  private final RecordingEventListener listener = new RecordingEventListener();
   private HandshakeCertificates handshakeCertificates = localhost();
-  private OkHttpClient client = defaultClient();
+  private OkHttpClient client = defaultClient().newBuilder()
+      .eventListener(listener)
+      .build();
   private RecordingCallback callback = new RecordingCallback();
   private TestLogHandler logHandler = new TestLogHandler();
   private Cache cache = new Cache(new File("/cache/"), Integer.MAX_VALUE, fileSystem);
@@ -1041,6 +1049,17 @@ public final class CallTest {
 
     executeSynchronously("/").assertBody("seed connection pool");
     executeSynchronously("/").assertBody("retry success");
+
+    // The call that seeds the connection pool.
+    listener.removeUpToEvent(CallEnd.class);
+
+    // The ResponseFailed event is not necessarily fatal!
+    listener.removeUpToEvent(ConnectionAcquired.class);
+    listener.removeUpToEvent(ResponseFailed.class);
+    listener.removeUpToEvent(ConnectionReleased.class);
+    listener.removeUpToEvent(ConnectionAcquired.class);
+    listener.removeUpToEvent(ConnectionReleased.class);
+    listener.removeUpToEvent(CallEnd.class);
   }
 
   @Test public void recoverWhenRetryOnConnectionFailureIsTrue_HTTP2() throws Exception {
@@ -3575,6 +3594,35 @@ public final class CallTest {
   @Test public void requestBodyThrowsUnrelatedToNetwork_HTTP2() throws Exception {
     enableProtocol(Protocol.HTTP_2);
     requestBodyThrowsUnrelatedToNetwork();
+  }
+
+  /** https://github.com/square/okhttp/issues/4583 */
+  @Test public void lateCancelCallsOnFailure() throws Exception {
+    server.enqueue(new MockResponse()
+        .setBody("abc"));
+
+    AtomicBoolean closed = new AtomicBoolean();
+
+    client = client.newBuilder()
+        .addInterceptor(new Interceptor() {
+          @Override public Response intercept(Chain chain) throws IOException {
+            Response response = chain.proceed(chain.request());
+            chain.call().cancel(); // Cancel after we have the response.
+            ForwardingSource closeTrackingSource = new ForwardingSource(response.body().source()) {
+              @Override public void close() throws IOException {
+                closed.set(true);
+                super.close();
+              }
+            };
+            return response.newBuilder()
+                .body(ResponseBody.create(null, -1L, Okio.buffer(closeTrackingSource)))
+                .build();
+          }
+        })
+        .build();
+
+    executeSynchronously("/").assertFailure("Canceled");
+    assertTrue(closed.get());
   }
 
   private void makeFailingCall() {

@@ -66,6 +66,7 @@ public final class Exchange {
       codec.writeRequestHeaders(request);
       eventListener.requestHeadersEnd(call, request);
     } catch (IOException e) {
+      eventListener.requestFailed(call, e);
       trackFailure(e);
       throw e;
     }
@@ -82,6 +83,7 @@ public final class Exchange {
     try {
       codec.flushRequest();
     } catch (IOException e) {
+      eventListener.requestFailed(call, e);
       trackFailure(e);
       throw e;
     }
@@ -91,6 +93,7 @@ public final class Exchange {
     try {
       codec.finishRequest();
     } catch (IOException e) {
+      eventListener.requestFailed(call, e);
       trackFailure(e);
       throw e;
     }
@@ -108,6 +111,7 @@ public final class Exchange {
       }
       return result;
     } catch (IOException e) {
+      eventListener.responseFailed(call, e);
       trackFailure(e);
       throw e;
     }
@@ -126,6 +130,7 @@ public final class Exchange {
       ResponseBodySource source = new ResponseBodySource(rawSource, contentLength);
       return new RealResponseBody(contentType, contentLength, Okio.buffer(source));
     } catch (IOException e) {
+      eventListener.responseFailed(call, e);
       trackFailure(e);
       throw e;
     }
@@ -147,21 +152,49 @@ public final class Exchange {
     codec.cancel();
   }
 
+  /**
+   * Revoke this exchange's access to streams. This is necessary when a follow-up request is
+   * required but the preceding exchange hasn't completed yet.
+   */
+  public void detachWithViolence() {
+    codec.cancel();
+    transmitter.exchangeMessageDone(this, true, true, null);
+  }
+
   void trackFailure(IOException e) {
     finder.trackFailure();
     codec.connection().trackFailure(e);
   }
 
-  void responseBodyComplete(long bytesRead, @Nullable IOException e) {
+  void bodyComplete(
+      long bytesRead, boolean responseDone, boolean requestDone, @Nullable IOException e) {
     if (e != null) {
       trackFailure(e);
     }
-    eventListener.responseBodyEnd(call, bytesRead);
-    transmitter.exchangeDone(e);
+    if (requestDone) {
+      if (e != null) {
+        eventListener.requestFailed(call, e);
+      } else {
+        eventListener.requestBodyEnd(call, bytesRead);
+      }
+    }
+    if (responseDone) {
+      if (e != null) {
+        eventListener.responseFailed(call, e);
+      } else {
+        eventListener.responseBodyEnd(call, bytesRead);
+      }
+    }
+    transmitter.exchangeMessageDone(this, requestDone, responseDone, e);
+  }
+
+  public void noRequestBody() {
+    transmitter.exchangeMessageDone(this, true, false, null);
   }
 
   /** A request body that fires events when it completes. */
   private final class RequestBodySink extends ForwardingSink {
+    private boolean completed;
     /** The exact number of bytes to be written, or -1L if that is unknown. */
     private long contentLength;
     private long bytesReceived;
@@ -182,7 +215,7 @@ public final class Exchange {
         super.write(source, byteCount);
         this.bytesReceived += byteCount;
       } catch (IOException e) {
-        trackFailure(e);
+        complete(e);
         throw e;
       }
     }
@@ -191,7 +224,7 @@ public final class Exchange {
       try {
         super.flush();
       } catch (IOException e) {
-        trackFailure(e);
+        complete(e);
         throw e;
       }
     }
@@ -202,19 +235,20 @@ public final class Exchange {
       if (contentLength != -1L && bytesReceived != contentLength) {
         throw new ProtocolException("unexpected end of stream");
       }
-      eventListener.requestBodyEnd(call, bytesReceived);
-      try {
-        super.close();
-      } catch (IOException e) {
-        trackFailure(e);
-        throw e;
-      }
+      super.close();
+      complete(null);
+    }
+
+    private void complete(@Nullable IOException e) {
+      if (completed) return;
+      completed = true;
+      bodyComplete(bytesReceived, false, true, e);
     }
   }
 
   /** A response body that fires events when it completes. */
   final class ResponseBodySource extends ForwardingSource {
-    private long contentLength;
+    final private long contentLength;
     private long bytesReceived;
     private boolean completed;
     private boolean closed;
@@ -262,10 +296,10 @@ public final class Exchange {
       complete(null);
     }
 
-    void complete(IOException e) {
+    void complete(@Nullable IOException e) {
       if (completed) return;
       completed = true;
-      responseBodyComplete(bytesReceived, e);
+      bodyComplete(bytesReceived, true, false, e);
     }
   }
 }

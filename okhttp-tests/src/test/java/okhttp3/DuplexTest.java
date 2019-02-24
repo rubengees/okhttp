@@ -15,12 +15,18 @@
  */
 package okhttp3;
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.ProtocolException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import okhttp3.internal.RecordingOkAuthenticator;
 import okhttp3.internal.duplex.AsyncRequestBody;
 import okhttp3.internal.duplex.MwsDuplexAccess;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.SocketPolicy;
 import okhttp3.mockwebserver.internal.duplex.MockDuplexResponseBody;
 import okhttp3.tls.HandshakeCertificates;
 import okio.BufferedSink;
@@ -35,13 +41,30 @@ import static okhttp3.TestUtil.defaultClient;
 import static okhttp3.tls.internal.TlsUtil.localhost;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 
 public final class DuplexTest {
   @Rule public final TestRule timeout = new Timeout(30_000, TimeUnit.MILLISECONDS);
   @Rule public final MockWebServer server = new MockWebServer();
 
+  private final RecordingEventListener listener = new RecordingEventListener();
   private HandshakeCertificates handshakeCertificates = localhost();
-  private OkHttpClient client = defaultClient();
+  private OkHttpClient client = defaultClient()
+      .newBuilder()
+      .eventListener(listener)
+      .build();
+
+  @Test public void http1DoesntSupportDuplex() throws IOException {
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .post(new AsyncRequestBody())
+        .build());
+    try {
+      call.execute();
+      fail();
+    } catch (ProtocolException expected) {
+    }
+  }
 
   @Test public void trueDuplexClientWritesFirst() throws Exception {
     enableProtocol(Protocol.HTTP_2);
@@ -183,7 +206,182 @@ public final class DuplexTest {
     mockDuplexResponseBody.awaitSuccess();
   }
 
-  // TODO(oldergod) write tests for headers discarded with 100 Continue
+  @Test public void requestBodyEndsAfterResponseBody() throws Exception {
+    enableProtocol(Protocol.HTTP_2);
+    MockDuplexResponseBody mockDuplexResponseBody = enqueueResponseWithBody(
+        new MockResponse()
+            .clearHeaders(),
+        new MockDuplexResponseBody()
+            .exhaustResponse()
+            .receiveRequest("request A\n")
+            .exhaustRequest());
+
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .post(new AsyncRequestBody())
+        .build());
+
+    try (Response response = call.execute()) {
+      BufferedSource responseBody = response.body().source();
+      assertTrue(responseBody.exhausted());
+
+      BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
+      requestBody.writeUtf8("request A\n");
+      requestBody.close();
+    }
+
+    mockDuplexResponseBody.awaitSuccess();
+
+    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+        "SecureConnectStart", "SecureConnectEnd", "ConnectEnd", "ConnectionAcquired",
+        "RequestHeadersStart", "RequestHeadersEnd", "RequestBodyStart", "ResponseHeadersStart",
+        "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "RequestBodyEnd",
+        "ConnectionReleased", "CallEnd");
+    assertEquals(expectedEvents, listener.recordedEventTypes());
+  }
+
+  @Test public void duplexWith100Continue() throws Exception {
+    enableProtocol(Protocol.HTTP_2);
+
+    MockDuplexResponseBody mockDuplexResponseBody = enqueueResponseWithBody(
+        new MockResponse()
+            .clearHeaders()
+            .setSocketPolicy(SocketPolicy.EXPECT_CONTINUE),
+        new MockDuplexResponseBody()
+            .receiveRequest("request body\n")
+            .sendResponse("response body\n")
+            .exhaustRequest());
+
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .header("Expect", "100-continue")
+        .post(new AsyncRequestBody())
+        .build());
+
+    try (Response response = call.execute()) {
+      BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
+      requestBody.writeUtf8("request body\n");
+      requestBody.flush();
+
+      BufferedSource responseBody = response.body().source();
+      assertEquals("response body", responseBody.readUtf8Line());
+
+      requestBody.close();
+      assertNull(responseBody.readUtf8Line());
+    }
+
+    mockDuplexResponseBody.awaitSuccess();
+  }
+
+  /**
+   * Duplex calls that have follow-ups are weird. By the time we know there's a follow-up we've
+   * already split off another thread to stream the request body. Because we permit at most one
+   * exchange at a time we break the request stream out from under that writer.
+   */
+  @Test public void duplexWithRedirect() throws Exception {
+    enableProtocol(Protocol.HTTP_2);
+
+    MockDuplexResponseBody mockDuplexResponseBody = enqueueResponseWithBody(
+        new MockResponse()
+            .clearHeaders()
+            .setResponseCode(HttpURLConnection.HTTP_MOVED_PERM)
+            .addHeader("Location: /b"),
+        new MockDuplexResponseBody()
+            .sendResponse("/a has moved!\n")
+            .requestIOException()
+            .exhaustResponse());
+    server.enqueue(new MockResponse()
+        .setBody("this is /b"));
+
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .post(new AsyncRequestBody())
+        .build());
+
+    try (Response response = call.execute()) {
+      BufferedSource responseBody = response.body().source();
+      assertEquals("this is /b", responseBody.readUtf8Line());
+    }
+
+    BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
+    try {
+      requestBody.writeUtf8("request body\n");
+      requestBody.flush();
+      fail();
+    } catch (IOException expected) {
+      assertEquals("stream was reset: CANCEL", expected.getMessage());
+    }
+
+    mockDuplexResponseBody.awaitSuccess();
+
+    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+        "SecureConnectStart", "SecureConnectEnd", "ConnectEnd", "ConnectionAcquired",
+        "RequestHeadersStart", "RequestHeadersEnd", "RequestBodyStart", "ResponseHeadersStart",
+        "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "RequestHeadersStart",
+        "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
+        "ResponseBodyEnd", "ConnectionReleased", "CallEnd", "RequestFailed");
+    assertEquals(expectedEvents, listener.recordedEventTypes());
+  }
+
+  /**
+   * Auth requires follow-ups. Unlike redirects, the auth follow-up also has a request body. This
+   * test makes a single call with two duplex requests!
+   */
+  @Test public void duplexWithAuthChallenge() throws Exception {
+    enableProtocol(Protocol.HTTP_2);
+
+    String credential = Credentials.basic("jesse", "secret");
+    client = client.newBuilder()
+        .authenticator(new RecordingOkAuthenticator(credential, null))
+        .build();
+
+    MockDuplexResponseBody mockResponseBody1 = enqueueResponseWithBody(
+        new MockResponse()
+            .clearHeaders()
+            .setResponseCode(HttpURLConnection.HTTP_UNAUTHORIZED),
+        new MockDuplexResponseBody()
+            .sendResponse("please authenticate!\n")
+            .requestIOException()
+            .exhaustResponse());
+    MockDuplexResponseBody mockResponseBody2 = enqueueResponseWithBody(
+        new MockResponse()
+            .clearHeaders(),
+        new MockDuplexResponseBody()
+            .sendResponse("response body\n")
+            .exhaustResponse()
+            .receiveRequest("request body\n")
+            .exhaustRequest());
+
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .post(new AsyncRequestBody())
+        .build());
+
+    Response response2 = call.execute();
+
+    // First duplex request is detached with violence.
+    BufferedSink requestBody1 = ((AsyncRequestBody) call.request().body()).takeSink();
+    try {
+      requestBody1.writeUtf8("not authenticated\n");
+      requestBody1.flush();
+      fail();
+    } catch (IOException expected) {
+      assertEquals("stream was reset: CANCEL", expected.getMessage());
+    }
+    mockResponseBody1.awaitSuccess();
+
+    // Second duplex request proceeds normally.
+    BufferedSink requestBody2 = ((AsyncRequestBody) call.request().body()).takeSink();
+    requestBody2.writeUtf8("request body\n");
+    requestBody2.close();
+    BufferedSource responseBody2 = response2.body().source();
+    assertEquals("response body", responseBody2.readUtf8Line());
+    assertTrue(responseBody2.exhausted());
+    mockResponseBody2.awaitSuccess();
+
+    // No more requests attempted!
+    ((AsyncRequestBody) call.request().body()).assertNoMoreSinks();
+  }
 
   private MockDuplexResponseBody enqueueResponseWithBody(
       MockResponse response, MockDuplexResponseBody body) {

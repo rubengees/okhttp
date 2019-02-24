@@ -38,6 +38,7 @@ import okhttp3.RecordingEventListener.DnsStart;
 import okhttp3.RecordingEventListener.RequestBodyEnd;
 import okhttp3.RecordingEventListener.RequestHeadersEnd;
 import okhttp3.RecordingEventListener.ResponseBodyEnd;
+import okhttp3.RecordingEventListener.ResponseFailed;
 import okhttp3.RecordingEventListener.ResponseHeadersEnd;
 import okhttp3.RecordingEventListener.SecureConnectEnd;
 import okhttp3.RecordingEventListener.SecureConnectStart;
@@ -168,7 +169,8 @@ public final class EventListenerTest {
 
     List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
-        "RequestHeadersEnd", "ResponseHeadersStart", "ConnectionReleased", "CallFailed");
+        "RequestHeadersEnd", "ResponseHeadersStart", "ResponseFailed", "ConnectionReleased",
+        "CallFailed");
     assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
@@ -197,10 +199,10 @@ public final class EventListenerTest {
     List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
-        "ResponseBodyEnd", "ConnectionReleased", "CallFailed");
+        "ResponseFailed", "ConnectionReleased", "CallFailed");
     assertEquals(expectedEvents, listener.recordedEventTypes());
-    ResponseBodyEnd bodyEnd = listener.removeUpToEvent(ResponseBodyEnd.class);
-    assertEquals(5, bodyEnd.bytesRead);
+    ResponseFailed responseFailed = listener.removeUpToEvent(ResponseFailed.class);
+    assertEquals("unexpected end of stream", responseFailed.ioe.getMessage());
   }
 
   @Test public void canceledCallEventSequence() {
@@ -985,12 +987,12 @@ public final class EventListenerTest {
       }
 
       @Override public long contentLength() {
-        return 1024 * 8192;
+        return 1024 * 1024 * 256;
       }
 
       @Override public void writeTo(BufferedSink sink) throws IOException {
         for (int i = 0; i < 1024; i++) {
-          sink.write(new byte[8192]);
+          sink.write(new byte[1024 * 256]);
           sink.flush();
         }
       }
@@ -1011,6 +1013,49 @@ public final class EventListenerTest {
 
     CallFailed callFailed = listener.removeUpToEvent(CallFailed.class);
     assertNotNull(callFailed.ioe);
+  }
+
+  @Test public void requestBodyMultipleFailuresReportedOnlyOnce() {
+    RequestBody requestBody = new RequestBody() {
+      @Override public MediaType contentType() {
+        return MediaType.get("text/plain");
+      }
+
+      @Override public long contentLength() {
+        return 1024 * 1024 * 256;
+      }
+
+      @Override public void writeTo(BufferedSink sink) throws IOException {
+        int failureCount = 0;
+        for (int i = 0; i < 1024; i++) {
+          try {
+            sink.write(new byte[1024 * 256]);
+            sink.flush();
+          } catch (IOException e) {
+            failureCount++;
+            if (failureCount == 3) throw e;
+          }
+        }
+      }
+    };
+
+    server.enqueue(new MockResponse()
+        .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_REQUEST_BODY));
+
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .post(requestBody)
+        .build());
+    try {
+      call.execute();
+      fail();
+    } catch (IOException expected) {
+    }
+
+    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+        "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart", "RequestHeadersEnd",
+        "RequestBodyStart", "RequestFailed", "ConnectionReleased", "CallFailed");
+    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void requestBodySuccessHttp1OverHttps() throws IOException {
