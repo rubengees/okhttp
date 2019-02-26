@@ -78,6 +78,7 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
+      assertEquals("timeout", e.getMessage());
       assertTrue(call.isCanceled());
     }
   }
@@ -126,6 +127,7 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
+      assertEquals("timeout", e.getMessage());
       assertTrue(call.isCanceled());
     }
   }
@@ -176,6 +178,7 @@ public final class WholeOperationTimeoutTest {
       response.body().source().readUtf8();
       fail();
     } catch (IOException e) {
+      assertEquals("timeout", e.getMessage());
       assertTrue(call.isCanceled());
     }
   }
@@ -253,6 +256,7 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
+      assertEquals("timeout", e.getMessage());
       assertTrue(call.isCanceled());
     }
   }
@@ -276,6 +280,7 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
+      assertEquals("timeout", e.getMessage());
       assertTrue(call.isCanceled());
     }
   }

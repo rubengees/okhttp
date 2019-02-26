@@ -46,6 +46,7 @@ public final class Exchange {
   final EventListener eventListener;
   final ExchangeFinder finder;
   final ExchangeCodec codec;
+  private boolean duplex;
 
   public Exchange(Transmitter transmitter, Call call, EventListener eventListener,
       ExchangeFinder finder, ExchangeCodec codec) {
@@ -60,6 +61,11 @@ public final class Exchange {
     return codec.connection();
   }
 
+  /** Returns true if the request body need not complete before the response body starts. */
+  public boolean isDuplex() {
+    return duplex;
+  }
+
   public void writeRequestHeaders(Request request) throws IOException {
     try {
       eventListener.requestHeadersStart(call);
@@ -72,7 +78,8 @@ public final class Exchange {
     }
   }
 
-  public Sink createRequestBody(Request request) throws IOException {
+  public Sink createRequestBody(Request request, boolean duplex) throws IOException {
+    this.duplex = duplex;
     long contentLength = request.body().contentLength();
     eventListener.requestBodyStart(call);
     Sink rawRequestBody = codec.createRequestBody(request, contentLength);
@@ -141,6 +148,7 @@ public final class Exchange {
   }
 
   public RealWebSocket.Streams newWebSocketStreams() throws SocketException {
+    transmitter.timeoutEarlyExit();
     return codec.connection().newWebSocketStreams(this);
   }
 
@@ -166,7 +174,7 @@ public final class Exchange {
     codec.connection().trackFailure(e);
   }
 
-  void bodyComplete(
+  @Nullable IOException bodyComplete(
       long bytesRead, boolean responseDone, boolean requestDone, @Nullable IOException e) {
     if (e != null) {
       trackFailure(e);
@@ -185,7 +193,7 @@ public final class Exchange {
         eventListener.responseBodyEnd(call, bytesRead);
       }
     }
-    transmitter.exchangeMessageDone(this, requestDone, responseDone, e);
+    return transmitter.exchangeMessageDone(this, requestDone, responseDone, e);
   }
 
   public void noRequestBody() {
@@ -215,8 +223,7 @@ public final class Exchange {
         super.write(source, byteCount);
         this.bytesReceived += byteCount;
       } catch (IOException e) {
-        complete(e);
-        throw e;
+        throw complete(e);
       }
     }
 
@@ -224,8 +231,7 @@ public final class Exchange {
       try {
         super.flush();
       } catch (IOException e) {
-        complete(e);
-        throw e;
+        throw complete(e);
       }
     }
 
@@ -235,14 +241,18 @@ public final class Exchange {
       if (contentLength != -1L && bytesReceived != contentLength) {
         throw new ProtocolException("unexpected end of stream");
       }
-      super.close();
-      complete(null);
+      try {
+        super.close();
+        complete(null);
+      } catch (IOException e) {
+        throw complete(e);
+      }
     }
 
-    private void complete(@Nullable IOException e) {
-      if (completed) return;
+    private @Nullable IOException complete(@Nullable IOException e) {
+      if (completed) return e;
       completed = true;
-      bodyComplete(bytesReceived, false, true, e);
+      return bodyComplete(bytesReceived, false, true, e);
     }
   }
 
@@ -284,22 +294,25 @@ public final class Exchange {
 
         return read;
       } catch (IOException e) {
-        complete(e);
-        throw e;
+        throw complete(e);
       }
     }
 
     @Override public void close() throws IOException {
       if (closed) return;
       closed = true;
-      super.close();
-      complete(null);
+      try {
+        super.close();
+        complete(null);
+      } catch (IOException e) {
+        throw complete(e);
+      }
     }
 
-    void complete(@Nullable IOException e) {
-      if (completed) return;
+    @Nullable IOException complete(@Nullable IOException e) {
+      if (completed) return e;
       completed = true;
-      bodyComplete(bytesReceived, true, false, e);
+      return bodyComplete(bytesReceived, true, false, e);
     }
   }
 }
