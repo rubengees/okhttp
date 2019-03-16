@@ -28,11 +28,7 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 
-import static okhttp3.TestUtil.defaultClient;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 public final class WholeOperationTimeoutTest {
@@ -40,15 +36,16 @@ public final class WholeOperationTimeoutTest {
   private static final String BIG_ENOUGH_BODY = TestUtil.repeat('a', 64 * 1024);
 
   @Rule public final MockWebServer server = new MockWebServer();
+  @Rule public final OkHttpClientTestRule clientTestRule = new OkHttpClientTestRule();
 
-  private OkHttpClient client = defaultClient();
+  private OkHttpClient client = clientTestRule.client;
 
   @Test public void defaultConfigIsNoTimeout() throws Exception {
     Request request = new Request.Builder()
         .url(server.url("/"))
         .build();
     Call call = client.newCall(request);
-    assertEquals(0, call.timeout().timeoutNanos());
+    assertThat(call.timeout().timeoutNanos()).isEqualTo(0);
   }
 
   @Test public void configureClientDefault() throws Exception {
@@ -61,7 +58,7 @@ public final class WholeOperationTimeoutTest {
         .build();
 
     Call call = timeoutClient.newCall(request);
-    assertEquals(TimeUnit.MILLISECONDS.toNanos(456), call.timeout().timeoutNanos());
+    assertThat(call.timeout().timeoutNanos()).isEqualTo(TimeUnit.MILLISECONDS.toNanos(456));
   }
 
   @Test public void timeoutWritingRequest() throws Exception {
@@ -78,8 +75,8 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
-      assertEquals("timeout", e.getMessage());
-      assertTrue(call.isCanceled());
+      assertThat(e.getMessage()).isEqualTo("timeout");
+      assertThat(call.isCanceled()).isTrue();
     }
   }
 
@@ -109,8 +106,8 @@ public final class WholeOperationTimeoutTest {
     });
 
     latch.await();
-    assertTrue(call.isCanceled());
-    assertNotNull(exceptionRef.get());
+    assertThat(call.isCanceled()).isTrue();
+    assertThat(exceptionRef.get()).isNotNull();
   }
 
   @Test public void timeoutProcessing() throws Exception {
@@ -127,8 +124,8 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
-      assertEquals("timeout", e.getMessage());
-      assertTrue(call.isCanceled());
+      assertThat(e.getMessage()).isEqualTo("timeout");
+      assertThat(call.isCanceled()).isTrue();
     }
   }
 
@@ -158,8 +155,8 @@ public final class WholeOperationTimeoutTest {
     });
 
     latch.await();
-    assertTrue(call.isCanceled());
-    assertNotNull(exceptionRef.get());
+    assertThat(call.isCanceled()).isTrue();
+    assertThat(exceptionRef.get()).isNotNull();
   }
 
   @Test public void timeoutReadingResponse() throws Exception {
@@ -178,8 +175,8 @@ public final class WholeOperationTimeoutTest {
       response.body().source().readUtf8();
       fail();
     } catch (IOException e) {
-      assertEquals("timeout", e.getMessage());
-      assertTrue(call.isCanceled());
+      assertThat(e.getMessage()).isEqualTo("timeout");
+      assertThat(call.isCanceled()).isTrue();
     }
   }
 
@@ -219,8 +216,8 @@ public final class WholeOperationTimeoutTest {
     });
 
     latch.await();
-    assertTrue(call.isCanceled());
-    assertNotNull(exceptionRef.get());
+    assertThat(call.isCanceled()).isTrue();
+    assertThat(exceptionRef.get()).isNotNull();
   }
 
   @Test public void singleTimeoutForAllFollowUpRequests() throws Exception {
@@ -256,8 +253,8 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
-      assertEquals("timeout", e.getMessage());
-      assertTrue(call.isCanceled());
+      assertThat(e.getMessage()).isEqualTo("timeout");
+      assertThat(call.isCanceled()).isTrue();
     }
   }
 
@@ -280,8 +277,8 @@ public final class WholeOperationTimeoutTest {
       call.execute();
       fail();
     } catch (IOException e) {
-      assertEquals("timeout", e.getMessage());
-      assertTrue(call.isCanceled());
+      assertThat(e.getMessage()).isEqualTo("timeout");
+      assertThat(call.isCanceled()).isTrue();
     }
   }
 
@@ -301,7 +298,7 @@ public final class WholeOperationTimeoutTest {
     Thread.sleep(250);
     response.body().source().readUtf8();
     response.close();
-    assertFalse(call.isCanceled());
+    assertThat(call.isCanceled()).isFalse();
   }
 
   private RequestBody sleepingRequestBody(final int sleepMillis) {

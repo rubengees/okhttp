@@ -20,11 +20,7 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * A received response or failure recorded by the response recorder.
@@ -46,58 +42,58 @@ public final class RecordedResponse {
   }
 
   public RecordedResponse assertRequestUrl(HttpUrl url) {
-    assertEquals(url, request.url());
+    assertThat(request.url()).isEqualTo(url);
     return this;
   }
 
   public RecordedResponse assertRequestMethod(String method) {
-    assertEquals(method, request.method());
+    assertThat(request.method()).isEqualTo(method);
     return this;
   }
 
   public RecordedResponse assertRequestHeader(String name, String... values) {
-    assertEquals(Arrays.asList(values), request.headers(name));
+    assertThat(request.headers(name)).containsExactly(values);
     return this;
   }
 
   public RecordedResponse assertCode(int expectedCode) {
-    assertEquals(expectedCode, response.code());
+    assertThat(response.code()).isEqualTo(expectedCode);
     return this;
   }
 
   public RecordedResponse assertSuccessful() {
-    assertTrue(response.isSuccessful());
+    assertThat(response.isSuccessful()).isTrue();
     return this;
   }
 
   public RecordedResponse assertNotSuccessful() {
-    assertFalse(response.isSuccessful());
+    assertThat(response.isSuccessful()).isFalse();
     return this;
   }
 
   public RecordedResponse assertHeader(String name, String... values) {
-    assertEquals(Arrays.asList(values), response.headers(name));
+    assertThat(response.headers(name)).containsExactly(values);
     return this;
   }
 
   public RecordedResponse assertHeaders(Headers headers) {
-    assertEquals(headers, response.headers());
+    assertThat(response.headers()).isEqualTo(headers);
     return this;
   }
 
   public RecordedResponse assertBody(String expectedBody) {
-    assertEquals(expectedBody, body);
+    assertThat(body).isEqualTo(expectedBody);
     return this;
   }
 
   public RecordedResponse assertHandshake() {
     Handshake handshake = response.handshake();
-    assertNotNull(handshake.tlsVersion());
-    assertNotNull(handshake.cipherSuite());
-    assertNotNull(handshake.peerPrincipal());
-    assertEquals(1, handshake.peerCertificates().size());
-    assertNull(handshake.localPrincipal());
-    assertEquals(0, handshake.localCertificates().size());
+    assertThat(handshake.tlsVersion()).isNotNull();
+    assertThat(handshake.cipherSuite()).isNotNull();
+    assertThat(handshake.peerPrincipal()).isNotNull();
+    assertThat(handshake.peerCertificates().size()).isEqualTo(1);
+    assertThat(handshake.localPrincipal()).isNull();
+    assertThat(handshake.localCertificates().size()).isEqualTo(0);
     return this;
   }
 
@@ -106,8 +102,8 @@ public final class RecordedResponse {
    */
   public RecordedResponse priorResponse() {
     Response priorResponse = response.priorResponse();
-    assertNotNull(priorResponse);
-    assertNull(priorResponse.body());
+    assertThat(priorResponse).isNotNull();
+    assertThat(priorResponse.body()).isNull();
     return new RecordedResponse(priorResponse.request(), priorResponse, null, null, null);
   }
 
@@ -116,20 +112,20 @@ public final class RecordedResponse {
    */
   public RecordedResponse networkResponse() {
     Response networkResponse = response.networkResponse();
-    assertNotNull(networkResponse);
-    assertNull(networkResponse.body());
+    assertThat(networkResponse).isNotNull();
+    assertThat(networkResponse.body()).isNull();
     return new RecordedResponse(networkResponse.request(), networkResponse, null, null, null);
   }
 
   /** Asserts that the current response didn't use the network. */
   public RecordedResponse assertNoNetworkResponse() {
-    assertNull(response.networkResponse());
+    assertThat(response.networkResponse()).isNull();
     return this;
   }
 
   /** Asserts that the current response didn't use the cache. */
   public RecordedResponse assertNoCacheResponse() {
-    assertNull(response.cacheResponse());
+    assertThat(response.cacheResponse()).isNull();
     return this;
   }
 
@@ -138,8 +134,8 @@ public final class RecordedResponse {
    */
   public RecordedResponse cacheResponse() {
     Response cacheResponse = response.cacheResponse();
-    assertNotNull(cacheResponse);
-    assertNull(cacheResponse.body());
+    assertThat(cacheResponse).isNotNull();
+    assertThat(cacheResponse.body()).isNull();
     return new RecordedResponse(cacheResponse.request(), cacheResponse, null, null, null);
   }
 
@@ -151,19 +147,21 @@ public final class RecordedResponse {
         break;
       }
     }
-    assertTrue("Expected exception type among " + Arrays.toString(allowedExceptionTypes)
-            + ", got " + failure, found);
+    assertThat(found)
+        .overridingErrorMessage("Expected exception type among "
+            + Arrays.toString(allowedExceptionTypes) + ", got " + failure)
+        .isTrue();
     return this;
   }
 
   public RecordedResponse assertFailure(String... messages) {
-    assertNotNull("No failure found", failure);
-    assertTrue(failure.getMessage(), Arrays.asList(messages).contains(failure.getMessage()));
+    assertThat(failure).overridingErrorMessage("No failure found").isNotNull();
+    assertThat(messages).contains(failure.getMessage());
     return this;
   }
 
   public RecordedResponse assertFailureMatches(String... patterns) {
-    assertNotNull(failure);
+    assertThat(failure).isNotNull();
     for (String pattern : patterns) {
       if (failure.getMessage().matches(pattern)) return this;
     }
@@ -181,8 +179,10 @@ public final class RecordedResponse {
   }
 
   private void assertDateInRange(long minimum, long actual, long maximum) {
-    assertTrue("actual " + format(actual) + " < minimum " + format(maximum), actual >= minimum);
-    assertTrue("actual " + format(actual) + " > maximum " + format(minimum), actual <= maximum);
+    assertThat(actual)
+        .overridingErrorMessage("%s <= %s <= %s", format(minimum), format(actual), format(maximum))
+        .isBetween(minimum, maximum);
+
   }
 
   private String format(long time) {

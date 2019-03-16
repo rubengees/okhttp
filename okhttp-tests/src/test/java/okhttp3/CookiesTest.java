@@ -23,7 +23,6 @@ import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,18 +30,20 @@ import java.util.Map;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import org.junit.Rule;
 import org.junit.Test;
 
 import static java.net.CookiePolicy.ACCEPT_ORIGINAL_SERVER;
-import static okhttp3.TestUtil.defaultClient;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static java.util.Arrays.asList;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.data.Offset.offset;
 import static org.junit.Assert.fail;
 
 /** Derived from Android's CookiesTest. */
 public class CookiesTest {
-  private OkHttpClient client = defaultClient();
+  @Rule public final OkHttpClientTestRule clientTestRule = new OkHttpClientTestRule();
+
+  private OkHttpClient client = clientTestRule.client;
 
   @Test
   public void testNetscapeResponse() throws Exception {
@@ -62,17 +63,17 @@ public class CookiesTest {
     get(urlWithIpAddress);
 
     List<HttpCookie> cookies = cookieManager.getCookieStore().getCookies();
-    assertEquals(1, cookies.size());
+    assertThat(cookies.size()).isEqualTo(1);
     HttpCookie cookie = cookies.get(0);
-    assertEquals("a", cookie.getName());
-    assertEquals("android", cookie.getValue());
-    assertEquals(null, cookie.getComment());
-    assertEquals(null, cookie.getCommentURL());
-    assertEquals(false, cookie.getDiscard());
-    assertTrue(cookie.getMaxAge() > 100000000000L);
-    assertEquals("/path", cookie.getPath());
-    assertEquals(true, cookie.getSecure());
-    assertEquals(0, cookie.getVersion());
+    assertThat(cookie.getName()).isEqualTo("a");
+    assertThat(cookie.getValue()).isEqualTo("android");
+    assertThat(cookie.getComment()).isNull();
+    assertThat(cookie.getCommentURL()).isNull();
+    assertThat(cookie.getDiscard()).isFalse();
+    assertThat(cookie.getMaxAge()).isGreaterThan(100000000000L);
+    assertThat(cookie.getPath()).isEqualTo("/path");
+    assertThat(cookie.getSecure()).isTrue();
+    assertThat(cookie.getVersion()).isEqualTo(0);
   }
 
   @Test public void testRfc2109Response() throws Exception {
@@ -94,15 +95,16 @@ public class CookiesTest {
     get(urlWithIpAddress);
 
     List<HttpCookie> cookies = cookieManager.getCookieStore().getCookies();
-    assertEquals(1, cookies.size());
+    assertThat(cookies.size()).isEqualTo(1);
     HttpCookie cookie = cookies.get(0);
-    assertEquals("a", cookie.getName());
-    assertEquals("android", cookie.getValue());
-    assertEquals(null, cookie.getCommentURL());
-    assertEquals(false, cookie.getDiscard());
-    assertEquals(60.0, cookie.getMaxAge(), 1.0); // Converting to a fixed date can cause rounding!
-    assertEquals("/path", cookie.getPath());
-    assertEquals(true, cookie.getSecure());
+    assertThat(cookie.getName()).isEqualTo("a");
+    assertThat(cookie.getValue()).isEqualTo("android");
+    assertThat(cookie.getCommentURL()).isNull();
+    assertThat(cookie.getDiscard()).isFalse();
+    // Converting to a fixed date can cause rounding!
+    assertThat((double) cookie.getMaxAge()).isCloseTo(60.0, offset(1.0));
+    assertThat(cookie.getPath()).isEqualTo("/path");
+    assertThat(cookie.getSecure()).isTrue();
   }
 
   @Test public void testQuotedAttributeValues() throws Exception {
@@ -127,13 +129,14 @@ public class CookiesTest {
     get(urlWithIpAddress);
 
     List<HttpCookie> cookies = cookieManager.getCookieStore().getCookies();
-    assertEquals(1, cookies.size());
+    assertThat(cookies.size()).isEqualTo(1);
     HttpCookie cookie = cookies.get(0);
-    assertEquals("a", cookie.getName());
-    assertEquals("android", cookie.getValue());
-    assertEquals(60.0, cookie.getMaxAge(), 1.0); // Converting to a fixed date can cause rounding!
-    assertEquals("/path", cookie.getPath());
-    assertEquals(true, cookie.getSecure());
+    assertThat(cookie.getName()).isEqualTo("a");
+    assertThat(cookie.getValue()).isEqualTo("android");
+    // Converting to a fixed date can cause rounding!
+    assertThat((double) cookie.getMaxAge()).isCloseTo(60.0, offset(1.0));
+    assertThat(cookie.getPath()).isEqualTo("/path");
+    assertThat(cookie.getSecure()).isTrue();
   }
 
   @Test public void testSendingCookiesFromStore() throws Exception {
@@ -158,7 +161,7 @@ public class CookiesTest {
     get(serverUrl);
     RecordedRequest request = server.takeRequest();
 
-    assertEquals("a=android; b=banana", request.getHeader("Cookie"));
+    assertThat(request.getHeader("Cookie")).isEqualTo("a=android; b=banana");
   }
 
   @Test public void cookieHandlerLikeAndroid() throws Exception {
@@ -186,7 +189,7 @@ public class CookiesTest {
     get(serverUrl);
     RecordedRequest request = server.takeRequest();
 
-    assertEquals("a=android; b=banana", request.getHeader("Cookie"));
+    assertThat(request.getHeader("Cookie")).isEqualTo("a=android; b=banana");
   }
 
   @Test public void receiveAndSendMultipleCookies() throws Exception {
@@ -204,11 +207,11 @@ public class CookiesTest {
 
     get(urlWithIpAddress(server, "/"));
     RecordedRequest request1 = server.takeRequest();
-    assertNull(request1.getHeader("Cookie"));
+    assertThat(request1.getHeader("Cookie")).isNull();
 
     get(urlWithIpAddress(server, "/"));
     RecordedRequest request2 = server.takeRequest();
-    assertEquals("a=android; b=banana", request2.getHeader("Cookie"));
+    assertThat(request2.getHeader("Cookie")).isEqualTo("a=android; b=banana");
   }
 
   @Test public void testRedirectsDoNotIncludeTooManyCookies() throws Exception {
@@ -238,7 +241,7 @@ public class CookiesTest {
     get(redirectSourceUrl);
     RecordedRequest request = redirectSource.takeRequest();
 
-    assertEquals("c=cookie", request.getHeader("Cookie"));
+    assertThat(request.getHeader("Cookie")).isEqualTo("c=cookie");
 
     for (String header : redirectTarget.takeRequest().getHeaders().names()) {
       if (header.startsWith("Cookie")) {
@@ -267,9 +270,9 @@ public class CookiesTest {
     get(server.url("/"));
 
     RecordedRequest request = server.takeRequest();
-    assertEquals("Bar=bar; Baz=baz", request.getHeader("Cookie"));
-    assertNull(request.getHeader("Cookie2"));
-    assertNull(request.getHeader("Quux"));
+    assertThat(request.getHeader("Cookie")).isEqualTo("Bar=bar; Baz=baz");
+    assertThat(request.getHeader("Cookie2")).isNull();
+    assertThat(request.getHeader("Quux")).isNull();
   }
 
   @Test public void acceptOriginalServerMatchesSubdomain() throws Exception {
@@ -277,12 +280,12 @@ public class CookiesTest {
     JavaNetCookieJar cookieJar = new JavaNetCookieJar(cookieManager);
 
     HttpUrl url = HttpUrl.get("https://www.squareup.com/");
-    cookieJar.saveFromResponse(url, Arrays.asList(
+    cookieJar.saveFromResponse(url, asList(
         Cookie.parse(url, "a=android; Domain=squareup.com")));
     List<Cookie> actualCookies = cookieJar.loadForRequest(url);
-    assertEquals(1, actualCookies.size());
-    assertEquals("a", actualCookies.get(0).name());
-    assertEquals("android", actualCookies.get(0).value());
+    assertThat(actualCookies.size()).isEqualTo(1);
+    assertThat(actualCookies.get(0).name()).isEqualTo("a");
+    assertThat(actualCookies.get(0).value()).isEqualTo("android");
   }
 
   @Test public void acceptOriginalServerMatchesRfc2965Dot() throws Exception {
@@ -290,12 +293,12 @@ public class CookiesTest {
     JavaNetCookieJar cookieJar = new JavaNetCookieJar(cookieManager);
 
     HttpUrl url = HttpUrl.get("https://www.squareup.com/");
-    cookieJar.saveFromResponse(url, Arrays.asList(
+    cookieJar.saveFromResponse(url, asList(
         Cookie.parse(url, "a=android; Domain=.squareup.com")));
     List<Cookie> actualCookies = cookieJar.loadForRequest(url);
-    assertEquals(1, actualCookies.size());
-    assertEquals("a", actualCookies.get(0).name());
-    assertEquals("android", actualCookies.get(0).value());
+    assertThat(actualCookies.size()).isEqualTo(1);
+    assertThat(actualCookies.get(0).name()).isEqualTo("a");
+    assertThat(actualCookies.get(0).value()).isEqualTo("android");
   }
 
   @Test public void acceptOriginalServerMatchesExactly() throws Exception {
@@ -303,12 +306,12 @@ public class CookiesTest {
     JavaNetCookieJar cookieJar = new JavaNetCookieJar(cookieManager);
 
     HttpUrl url = HttpUrl.get("https://squareup.com/");
-    cookieJar.saveFromResponse(url, Arrays.asList(
+    cookieJar.saveFromResponse(url, asList(
         Cookie.parse(url, "a=android; Domain=squareup.com")));
     List<Cookie> actualCookies = cookieJar.loadForRequest(url);
-    assertEquals(1, actualCookies.size());
-    assertEquals("a", actualCookies.get(0).name());
-    assertEquals("android", actualCookies.get(0).value());
+    assertThat(actualCookies.size()).isEqualTo(1);
+    assertThat(actualCookies.get(0).name()).isEqualTo("a");
+    assertThat(actualCookies.get(0).value()).isEqualTo("android");
   }
 
   @Test public void acceptOriginalServerDoesNotMatchDifferentServer() throws Exception {
@@ -316,12 +319,12 @@ public class CookiesTest {
     JavaNetCookieJar cookieJar = new JavaNetCookieJar(cookieManager);
 
     HttpUrl url1 = HttpUrl.get("https://api.squareup.com/");
-    cookieJar.saveFromResponse(url1, Arrays.asList(
+    cookieJar.saveFromResponse(url1, asList(
         Cookie.parse(url1, "a=android; Domain=api.squareup.com")));
 
     HttpUrl url2 = HttpUrl.get("https://www.squareup.com/");
     List<Cookie> actualCookies = cookieJar.loadForRequest(url2);
-    assertEquals(Collections.<Cookie>emptyList(), actualCookies);
+    assertThat(actualCookies).isEmpty();
   }
 
   private HttpUrl urlWithIpAddress(MockWebServer server, String path) throws Exception {

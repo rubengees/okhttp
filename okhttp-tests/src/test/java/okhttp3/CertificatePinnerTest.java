@@ -23,9 +23,8 @@ import okhttp3.CertificatePinner.Pin;
 import okhttp3.tls.HeldCertificate;
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static java.util.Arrays.asList;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 public final class CertificatePinnerTest {
@@ -87,9 +86,9 @@ public final class CertificatePinnerTest {
         .build();
     String keypairBCertificate2Pin = CertificatePinner.pin(heldCertificateB2.certificate());
 
-    assertTrue(certA1Sha256Pin.equals(keypairACertificate2Pin));
-    assertTrue(certB1Sha256Pin.equals(keypairBCertificate2Pin));
-    assertFalse(certA1Sha256Pin.equals(certB1Sha256Pin));
+    assertThat(keypairACertificate2Pin).isEqualTo(certA1Sha256Pin);
+    assertThat(keypairBCertificate2Pin).isEqualTo(certB1Sha256Pin);
+    assertThat(certB1Sha256Pin).isNotEqualTo(certA1Sha256Pin);
   }
 
   @Test public void successfulCheck() throws Exception {
@@ -221,10 +220,10 @@ public final class CertificatePinnerTest {
         .add("second.com", certC1Sha256Pin)
         .build();
 
-    List<Pin> expectedPins = Arrays.asList(
+    List<Pin> expectedPins = asList(
         new Pin("first.com", certA1Sha256Pin),
         new Pin("first.com", certB1Sha256Pin));
-    assertEquals(expectedPins, certificatePinner.findMatchingPins("first.com"));
+    assertThat(certificatePinner.findMatchingPins("first.com")).isEqualTo(expectedPins);
   }
 
   @Test public void successfulFindMatchingPinsForWildcardAndDirectCertificates() {
@@ -234,10 +233,10 @@ public final class CertificatePinnerTest {
         .add("b.example.com", certC1Sha256Pin)
         .build();
 
-    List<Pin> expectedPins = Arrays.asList(
+    List<Pin> expectedPins = asList(
         new Pin("*.example.com", certA1Sha256Pin),
         new Pin("a.example.com", certB1Sha256Pin));
-    assertEquals(expectedPins, certificatePinner.findMatchingPins("a.example.com"));
+    assertThat(certificatePinner.findMatchingPins("a.example.com")).isEqualTo(expectedPins);
   }
 
   @Test public void wildcardHostnameShouldNotMatchThroughDot() throws Exception {
@@ -245,8 +244,8 @@ public final class CertificatePinnerTest {
         .add("*.example.com", certA1Sha256Pin)
         .build();
 
-    assertEquals(Collections.emptyList(), certificatePinner.findMatchingPins("example.com"));
-    assertEquals(Collections.emptyList(), certificatePinner.findMatchingPins("a.b.example.com"));
+    assertThat(certificatePinner.findMatchingPins("example.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("a.b.example.com")).isEmpty();
   }
 
   @Test public void successfulFindMatchingPinsIgnoresCase() {
@@ -255,11 +254,11 @@ public final class CertificatePinnerTest {
         .add("*.MyExample.Com", certB1Sha256Pin)
         .build();
 
-    List<Pin> expectedPin1 = Arrays.asList(new Pin("EXAMPLE.com", certA1Sha256Pin));
-    assertEquals(expectedPin1, certificatePinner.findMatchingPins("example.com"));
+    List<Pin> expectedPin1 = asList(new Pin("EXAMPLE.com", certA1Sha256Pin));
+    assertThat(certificatePinner.findMatchingPins("example.com")).isEqualTo(expectedPin1);
 
-    List<Pin> expectedPin2 = Arrays.asList(new Pin("*.MyExample.Com", certB1Sha256Pin));
-    assertEquals(expectedPin2, certificatePinner.findMatchingPins("a.myexample.com"));
+    List<Pin> expectedPin2 = asList(new Pin("*.MyExample.Com", certB1Sha256Pin));
+    assertThat(certificatePinner.findMatchingPins("a.myexample.com")).isEqualTo(expectedPin2);
   }
 
   @Test public void successfulFindMatchingPinPunycode() {
@@ -267,8 +266,8 @@ public final class CertificatePinnerTest {
         .add("σkhttp.com", certA1Sha256Pin)
         .build();
 
-    List<Pin> expectedPin = Arrays.asList(new Pin("σkhttp.com", certA1Sha256Pin));
-    assertEquals(expectedPin, certificatePinner.findMatchingPins("xn--khttp-fde.com"));
+    List<Pin> expectedPin = asList(new Pin("σkhttp.com", certA1Sha256Pin));
+    assertThat(certificatePinner.findMatchingPins("xn--khttp-fde.com")).isEqualTo(expectedPin);
   }
 
   /** https://github.com/square/okhttp/issues/3324 */
@@ -277,25 +276,17 @@ public final class CertificatePinnerTest {
         .add("*.example.com", certA1Sha256Pin)
         .build();
 
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("a.example.com.notexample.com"));
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("example.com.notexample.com"));
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("notexample.com"));
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("example.com"));
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("a.b.example.com"));
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("ple.com"));
-    assertEquals(Collections.emptyList(),
-        certificatePinner.findMatchingPins("com"));
+    assertThat(certificatePinner.findMatchingPins("a.example.com.notexample.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("example.com.notexample.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("notexample.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("example.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("a.b.example.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("ple.com")).isEmpty();
+    assertThat(certificatePinner.findMatchingPins("com")).isEmpty();
 
     Pin expectedPin = new Pin("*.example.com", certA1Sha256Pin);
-    assertEquals(Collections.singletonList(expectedPin),
-        certificatePinner.findMatchingPins("a.example.com"));
-    assertEquals(Collections.singletonList(expectedPin),
-        certificatePinner.findMatchingPins("example.example.com"));
+    assertThat(certificatePinner.findMatchingPins("a.example.com")).containsExactly(expectedPin);
+    assertThat(certificatePinner.findMatchingPins("example.example.com"))
+        .containsExactly(expectedPin);
   }
 }

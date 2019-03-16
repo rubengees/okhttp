@@ -18,8 +18,6 @@ package okhttp3;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.ProtocolException;
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import okhttp3.internal.RecordingOkAuthenticator;
 import okhttp3.internal.duplex.AsyncRequestBody;
@@ -36,20 +34,20 @@ import org.junit.Test;
 import org.junit.rules.TestRule;
 import org.junit.rules.Timeout;
 
+import static java.util.Arrays.asList;
 import static junit.framework.TestCase.assertTrue;
-import static okhttp3.TestUtil.defaultClient;
 import static okhttp3.tls.internal.TlsUtil.localhost;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 public final class DuplexTest {
   @Rule public final TestRule timeout = new Timeout(30_000, TimeUnit.MILLISECONDS);
   @Rule public final MockWebServer server = new MockWebServer();
+  @Rule public OkHttpClientTestRule clientTestRule = new OkHttpClientTestRule();
 
   private final RecordingEventListener listener = new RecordingEventListener();
   private HandshakeCertificates handshakeCertificates = localhost();
-  private OkHttpClient client = defaultClient()
+  private OkHttpClient client = clientTestRule.client
       .newBuilder()
       .eventListener(listener)
       .build();
@@ -78,7 +76,8 @@ public final class DuplexTest {
             .sendResponse("response D\n")
             .receiveRequest("request E\n")
             .sendResponse("response F\n")
-            .exhaustRequest());
+            .exhaustRequest()
+            .exhaustResponse());
 
     Call call = client.newCall(new Request.Builder()
         .url(server.url("/"))
@@ -91,18 +90,18 @@ public final class DuplexTest {
       requestBody.flush();
 
       BufferedSource responseBody = response.body().source();
-      assertEquals("response B", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response B");
 
       requestBody.writeUtf8("request C\n");
       requestBody.flush();
-      assertEquals("response D", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response D");
 
       requestBody.writeUtf8("request E\n");
       requestBody.flush();
-      assertEquals("response F", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response F");
 
       requestBody.close();
-      assertNull(responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isNull();
     }
 
     mockDuplexResponseBody.awaitSuccess();
@@ -119,7 +118,9 @@ public final class DuplexTest {
             .sendResponse("response C\n")
             .receiveRequest("request D\n")
             .sendResponse("response E\n")
-            .receiveRequest("request F\n"));
+            .receiveRequest("request F\n")
+            .exhaustResponse()
+            .exhaustRequest());
 
     Call call = client.newCall(new Request.Builder()
         .url(server.url("/"))
@@ -130,19 +131,19 @@ public final class DuplexTest {
       BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
       BufferedSource responseBody = response.body().source();
 
-      assertEquals("response A", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response A");
       requestBody.writeUtf8("request B\n");
       requestBody.flush();
 
-      assertEquals("response C", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response C");
       requestBody.writeUtf8("request D\n");
       requestBody.flush();
 
-      assertEquals("response E", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response E");
       requestBody.writeUtf8("request F\n");
       requestBody.flush();
 
-      assertNull(responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isNull();
       requestBody.close();
     }
 
@@ -166,12 +167,12 @@ public final class DuplexTest {
         .build());
 
     try (Response response = call.execute()) {
-      assertEquals(Headers.of("h1", "v1", "h2", "v2"), response.headers());
+      assertThat(response.headers()).isEqualTo(Headers.of("h1", "v1", "h2", "v2"));
 
       BufferedSource responseBody = response.body().source();
-      assertEquals("ok", responseBody.readUtf8(2));
+      assertThat(responseBody.readUtf8(2)).isEqualTo("ok");
       assertTrue(responseBody.exhausted());
-      assertEquals(Headers.of("trailers", "boom"), response.trailers());
+      assertThat(response.trailers()).isEqualTo(Headers.of("trailers", "boom"));
     }
 
     mockDuplexResponseBody.awaitSuccess();
@@ -232,12 +233,12 @@ public final class DuplexTest {
 
     mockDuplexResponseBody.awaitSuccess();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+    assertThat(listener.recordedEventTypes()).containsExactly(
+        "CallStart", "DnsStart", "DnsEnd", "ConnectStart",
         "SecureConnectStart", "SecureConnectEnd", "ConnectEnd", "ConnectionAcquired",
         "RequestHeadersStart", "RequestHeadersEnd", "RequestBodyStart", "ResponseHeadersStart",
         "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "RequestBodyEnd",
         "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void duplexWith100Continue() throws Exception {
@@ -264,10 +265,10 @@ public final class DuplexTest {
       requestBody.flush();
 
       BufferedSource responseBody = response.body().source();
-      assertEquals("response body", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response body");
 
       requestBody.close();
-      assertNull(responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isNull();
     }
 
     mockDuplexResponseBody.awaitSuccess();
@@ -300,7 +301,7 @@ public final class DuplexTest {
 
     try (Response response = call.execute()) {
       BufferedSource responseBody = response.body().source();
-      assertEquals("this is /b", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("this is /b");
     }
 
     BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
@@ -309,18 +310,18 @@ public final class DuplexTest {
       requestBody.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: CANCEL", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: CANCEL");
     }
 
     mockDuplexResponseBody.awaitSuccess();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+    assertThat(listener.recordedEventTypes()).containsExactly(
+        "CallStart", "DnsStart", "DnsEnd", "ConnectStart",
         "SecureConnectStart", "SecureConnectEnd", "ConnectEnd", "ConnectionAcquired",
         "RequestHeadersStart", "RequestHeadersEnd", "RequestBodyStart", "ResponseHeadersStart",
         "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd", "RequestFailed");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   /**
@@ -366,7 +367,7 @@ public final class DuplexTest {
       requestBody1.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: CANCEL", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: CANCEL");
     }
     mockResponseBody1.awaitSuccess();
 
@@ -375,7 +376,7 @@ public final class DuplexTest {
     requestBody2.writeUtf8("request body\n");
     requestBody2.close();
     BufferedSource responseBody2 = response2.body().source();
-    assertEquals("response body", responseBody2.readUtf8Line());
+    assertThat(responseBody2.readUtf8Line()).isEqualTo("response body");
     assertTrue(responseBody2.exhausted());
     mockResponseBody2.awaitSuccess();
 
@@ -400,7 +401,7 @@ public final class DuplexTest {
       call.execute();
       fail();
     } catch (IOException e) {
-      assertEquals("timeout", e.getMessage());
+      assertThat(e.getMessage()).isEqualTo("timeout");
       assertTrue(call.isCanceled());
     }
   }
@@ -431,12 +432,48 @@ public final class DuplexTest {
       BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
 
       BufferedSource responseBody = response.body().source();
-      assertEquals("response A", responseBody.readUtf8Line());
-      assertEquals("response B", responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response A");
+      assertThat(responseBody.readUtf8Line()).isEqualTo("response B");
 
       requestBody.writeUtf8("request C\n");
       requestBody.close();
-      assertNull(responseBody.readUtf8Line());
+      assertThat(responseBody.readUtf8Line()).isNull();
+    }
+
+    mockDuplexResponseBody.awaitSuccess();
+  }
+
+  @Test public void duplexWithRewriteInterceptors() throws Exception {
+    enableProtocol(Protocol.HTTP_2);
+    MockDuplexResponseBody mockDuplexResponseBody = enqueueResponseWithBody(
+        new MockResponse()
+            .clearHeaders(),
+        new MockDuplexResponseBody()
+            .receiveRequest("REQUEST A\n")
+            .sendResponse("response B\n")
+            .exhaustRequest()
+            .exhaustResponse());
+
+    client = client.newBuilder()
+        .addInterceptor(new UppercaseRequestInterceptor())
+        .addInterceptor(new UppercaseResponseInterceptor())
+        .build();
+
+    Call call = client.newCall(new Request.Builder()
+        .url(server.url("/"))
+        .post(new AsyncRequestBody())
+        .build());
+
+    try (Response response = call.execute()) {
+      BufferedSink requestBody = ((AsyncRequestBody) call.request().body()).takeSink();
+      requestBody.writeUtf8("request A\n");
+      requestBody.flush();
+
+      BufferedSource responseBody = response.body().source();
+      assertThat(responseBody.readUtf8Line()).isEqualTo("RESPONSE B");
+
+      requestBody.close();
+      assertThat(responseBody.readUtf8Line()).isNull();
     }
 
     mockDuplexResponseBody.awaitSuccess();
@@ -456,7 +493,7 @@ public final class DuplexTest {
   private void enableProtocol(Protocol protocol) {
     enableTls();
     client = client.newBuilder()
-        .protocols(Arrays.asList(protocol, Protocol.HTTP_1_1))
+        .protocols(asList(protocol, Protocol.HTTP_1_1))
         .build();
     server.setProtocols(client.protocols());
   }

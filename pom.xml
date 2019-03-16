@@ -11,7 +11,7 @@
 
   <groupId>com.squareup.okhttp3</groupId>
   <artifactId>parent</artifactId>
-  <version>3.14.0-SNAPSHOT</version>
+  <version>3.15.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>OkHttp (Parent)</name>
@@ -22,9 +22,6 @@
     <module>okhttp</module>
     <module>okhttp-tests</module>
 
-    <module>okhttp-android-support</module>
-
-    <module>okhttp-apache</module>
     <module>okhttp-sse</module>
     <module>okhttp-testing-support</module>
     <module>okhttp-tls</module>
@@ -46,7 +43,6 @@
     <airlift.version>0.8</airlift.version>
     <android.version>4.1.1.4</android.version>
     <animal.sniffer.version>1.17</animal.sniffer.version>
-    <apache.http.version>4.5.6</apache.http.version>
     <bouncycastle.version>1.60</bouncycastle.version>
     <guava.version>27.0.1-jre</guava.version>
     <java.version>1.8</java.version>
@@ -57,6 +53,7 @@
 
     <!-- Test Dependencies -->
     <junit.version>4.12</junit.version>
+    <assertj.version>3.11.0</assertj.version>
 
     <!-- platform test mode -->
     <okhttp.platform>platform</okhttp.platform>
@@ -105,11 +102,6 @@
         <version>${bouncycastle.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.apache.httpcomponents</groupId>
-        <artifactId>httpclient</artifactId>
-        <version>${apache.http.version}</version>
-      </dependency>
-      <dependency>
         <groupId>io.airlift</groupId>
         <artifactId>airline</artifactId>
         <version>${airlift.version}</version>
@@ -138,6 +130,11 @@
         <groupId>org.conscrypt</groupId>
         <artifactId>conscrypt-openjdk-uber</artifactId>
         <version>${conscrypt.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

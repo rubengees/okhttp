@@ -21,7 +21,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -57,38 +56,32 @@ import org.hamcrest.CoreMatchers;
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
 import static java.util.Arrays.asList;
-import static okhttp3.TestUtil.defaultClient;
 import static okhttp3.tls.internal.TlsUtil.localhost;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.CoreMatchers.any;
-import static org.hamcrest.CoreMatchers.either;
 import static org.hamcrest.CoreMatchers.equalTo;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeThat;
 
 public final class EventListenerTest {
   public static final Matcher<Response> anyResponse = CoreMatchers.any(Response.class);
   @Rule public final MockWebServer server = new MockWebServer();
+  @Rule public final OkHttpClientTestRule clientTestRule = new OkHttpClientTestRule();
 
   private final RecordingEventListener listener = new RecordingEventListener();
   private final HandshakeCertificates handshakeCertificates = localhost();
 
-  private OkHttpClient client;
+  private OkHttpClient client = clientTestRule.client;
   private SocksProxy socksProxy;
 
   @Before public void setUp() {
-    client = defaultClient().newBuilder()
+    client = clientTestRule.client.newBuilder()
         .eventListener(listener)
         .build();
 
@@ -110,15 +103,14 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
-    assertEquals("abc", response.body().string());
+    assertThat(response.code()).isEqualTo(200);
+    assertThat(response.body().string()).isEqualTo("abc");
     response.body().close();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void successfulCallEventSequenceForEnqueue() throws Exception {
@@ -145,11 +137,10 @@ public final class EventListenerTest {
 
     completionLatch.await();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void failedCallEventSequence() {
@@ -164,14 +155,13 @@ public final class EventListenerTest {
       call.execute();
       fail();
     } catch (IOException expected) {
-      assertThat(expected.getMessage(), either(equalTo("timeout")).or(equalTo("Read timed out")));
+      assertThat(expected.getMessage()).isIn("timeout", "Read timed out");
     }
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseFailed", "ConnectionReleased",
         "CallFailed");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void failedDribbledCallEventSequence() throws IOException {
@@ -193,16 +183,15 @@ public final class EventListenerTest {
       response.body.string();
       fail();
     } catch (IOException expected) {
-      assertThat(expected.getMessage(), equalTo("unexpected end of stream"));
+      assertThat(expected.getMessage()).isEqualTo("unexpected end of stream");
     }
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseFailed", "ConnectionReleased", "CallFailed");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
     ResponseFailed responseFailed = listener.removeUpToEvent(ResponseFailed.class);
-    assertEquals("unexpected end of stream", responseFailed.ioe.getMessage());
+    assertThat(responseFailed.ioe.getMessage()).isEqualTo("unexpected end of stream");
   }
 
   @Test public void canceledCallEventSequence() {
@@ -214,11 +203,10 @@ public final class EventListenerTest {
       call.execute();
       fail();
     } catch (IOException expected) {
-      assertEquals("Canceled", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("Canceled");
     }
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "CallFailed");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "CallFailed");
   }
 
   private void assertSuccessfulEventOrder(Matcher<Response> responseMatcher) throws IOException {
@@ -226,23 +214,22 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().string();
     response.body().close();
 
     assumeThat(response, responseMatcher);
 
-    List<String> expectedEvents = asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+    assertThat(listener.recordedEventTypes()).containsExactly(
+        "CallStart", "DnsStart", "DnsEnd", "ConnectStart",
         "SecureConnectStart", "SecureConnectEnd", "ConnectEnd", "ConnectionAcquired",
         "RequestHeadersStart", "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd",
         "ResponseBodyStart", "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void secondCallEventSequence() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     server.enqueue(new MockResponse());
     server.enqueue(new MockResponse());
 
@@ -258,11 +245,9 @@ public final class EventListenerTest {
     Response response = call.execute();
     response.close();
 
-    List<String> expectedEvents = asList("CallStart", "ConnectionAcquired",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "ConnectionAcquired",
         "RequestHeadersStart", "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd",
         "ResponseBodyStart", "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   private void assertBytesReadWritten(RecordingEventListener listener,
@@ -271,33 +256,30 @@ public final class EventListenerTest {
 
     if (requestHeaderLength != null) {
       RequestHeadersEnd responseHeadersEnd = listener.removeUpToEvent(RequestHeadersEnd.class);
-      assertThat("request header length", responseHeadersEnd.headerLength, requestHeaderLength);
+      Assert.assertThat("request header length", responseHeadersEnd.headerLength, requestHeaderLength);
     } else {
-      assertFalse("Found RequestHeadersEnd",
-          listener.recordedEventTypes().contains("RequestHeadersEnd"));
+      assertThat(listener.recordedEventTypes()).doesNotContain("RequestHeadersEnd");
     }
 
     if (requestBodyBytes != null) {
       RequestBodyEnd responseBodyEnd = listener.removeUpToEvent(RequestBodyEnd.class);
-      assertThat("request body bytes", responseBodyEnd.bytesWritten, requestBodyBytes);
+      Assert.assertThat("request body bytes", responseBodyEnd.bytesWritten, requestBodyBytes);
     } else {
-      assertFalse("Found RequestBodyEnd", listener.recordedEventTypes().contains("RequestBodyEnd"));
+      assertThat(listener.recordedEventTypes()).doesNotContain("RequestBodyEnd");
     }
 
     if (responseHeaderLength != null) {
       ResponseHeadersEnd responseHeadersEnd = listener.removeUpToEvent(ResponseHeadersEnd.class);
-      assertThat("response header length", responseHeadersEnd.headerLength, responseHeaderLength);
+      Assert.assertThat("response header length", responseHeadersEnd.headerLength, responseHeaderLength);
     } else {
-      assertFalse("Found ResponseHeadersEnd",
-          listener.recordedEventTypes().contains("ResponseHeadersEnd"));
+      assertThat(listener.recordedEventTypes()).doesNotContain("ResponseHeadersEnd");
     }
 
     if (responseBodyBytes != null) {
       ResponseBodyEnd responseBodyEnd = listener.removeUpToEvent(ResponseBodyEnd.class);
-      assertThat("response body bytes", responseBodyEnd.bytesRead, responseBodyBytes);
+      Assert.assertThat("response body bytes", responseBodyEnd.bytesRead, responseBodyBytes);
     } else {
-      assertFalse("Found ResponseBodyEnd",
-          listener.recordedEventTypes().contains("ResponseBodyEnd"));
+      assertThat(listener.recordedEventTypes()).doesNotContain("ResponseBodyEnd");
     }
   }
 
@@ -339,7 +321,7 @@ public final class EventListenerTest {
 
   @Test public void successfulEmptyH2CallEventSequence() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     server.enqueue(new MockResponse());
 
     assertSuccessfulEventOrder(matchesProtocol(Protocol.HTTP_2));
@@ -350,7 +332,7 @@ public final class EventListenerTest {
 
   @Test public void successfulEmptyHttpsCallEventSequence() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_1_1));
     server.enqueue(new MockResponse()
         .setBody("abc"));
 
@@ -362,7 +344,7 @@ public final class EventListenerTest {
 
   @Test public void successfulChunkedHttpsCallEventSequence() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_1_1));
     server.enqueue(
         new MockResponse().setBodyDelay(100, TimeUnit.MILLISECONDS).setChunkedBody("Hello!", 2));
 
@@ -374,7 +356,7 @@ public final class EventListenerTest {
 
   @Test public void successfulChunkedH2CallEventSequence() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     server.enqueue(
         new MockResponse().setBodyDelay(100, TimeUnit.MILLISECONDS).setChunkedBody("Hello!", 2));
 
@@ -391,17 +373,17 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     DnsStart dnsStart = listener.removeUpToEvent(DnsStart.class);
-    assertSame(call, dnsStart.call);
-    assertEquals(server.getHostName(), dnsStart.domainName);
+    assertThat(dnsStart.call).isSameAs(call);
+    assertThat(dnsStart.domainName).isEqualTo(server.getHostName());
 
     DnsEnd dnsEnd = listener.removeUpToEvent(DnsEnd.class);
-    assertSame(call, dnsEnd.call);
-    assertEquals(server.getHostName(), dnsEnd.domainName);
-    assertEquals(1, dnsEnd.inetAddressList.size());
+    assertThat(dnsEnd.call).isSameAs(call);
+    assertThat(dnsEnd.domainName).isEqualTo(server.getHostName());
+    assertThat(dnsEnd.inetAddressList.size()).isEqualTo(1);
   }
 
   @Test public void noDnsLookupOnPooledConnection() throws IOException {
@@ -413,7 +395,7 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response1 = call1.execute();
-    assertEquals(200, response1.code());
+    assertThat(response1.code()).isEqualTo(200);
     response1.body().close();
 
     listener.clearAllEvents();
@@ -422,12 +404,12 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response2 = call2.execute();
-    assertEquals(200, response2.code());
+    assertThat(response2.code()).isEqualTo(200);
     response2.body().close();
 
     List<String> recordedEvents = listener.recordedEventTypes();
-    assertFalse(recordedEvents.contains("DnsStart"));
-    assertFalse(recordedEvents.contains("DnsEnd"));
+    assertThat(recordedEvents).doesNotContain("DnsStart");
+    assertThat(recordedEvents).doesNotContain("DnsEnd");
   }
 
   @Test public void multipleDnsLookupsForSingleCall() throws IOException {
@@ -448,7 +430,7 @@ public final class EventListenerTest {
         .url("http://fakeurl:" + server.getPort())
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     listener.removeUpToEvent(DnsStart.class);
@@ -473,8 +455,8 @@ public final class EventListenerTest {
     listener.removeUpToEvent(DnsStart.class);
 
     CallFailed callFailed = listener.removeUpToEvent(CallFailed.class);
-    assertSame(call, callFailed.call);
-    assertTrue(callFailed.ioe instanceof UnknownHostException);
+    assertThat(callFailed.call).isSameAs(call);
+    assertThat(callFailed.ioe).isInstanceOf(UnknownHostException.class);
   }
 
   @Test public void emptyDnsLookup() {
@@ -495,8 +477,8 @@ public final class EventListenerTest {
     listener.removeUpToEvent(DnsStart.class);
 
     CallFailed callFailed = listener.removeUpToEvent(CallFailed.class);
-    assertSame(call, callFailed.call);
-    assertTrue(callFailed.ioe instanceof UnknownHostException);
+    assertThat(callFailed.call).isSameAs(call);
+    assertThat(callFailed.ioe).isInstanceOf(UnknownHostException.class);
   }
 
   @Test public void successfulConnect() throws IOException {
@@ -506,21 +488,21 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     InetAddress address = client.dns().lookup(server.getHostName()).get(0);
     InetSocketAddress expectedAddress = new InetSocketAddress(address, server.getPort());
 
     ConnectStart connectStart = listener.removeUpToEvent(ConnectStart.class);
-    assertSame(call, connectStart.call);
-    assertEquals(expectedAddress, connectStart.inetSocketAddress);
-    assertEquals(Proxy.NO_PROXY, connectStart.proxy);
+    assertThat(connectStart.call).isSameAs(call);
+    assertThat(connectStart.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectStart.proxy).isEqualTo(Proxy.NO_PROXY);
 
     ConnectEnd connectEnd = listener.removeUpToEvent(ConnectEnd.class);
-    assertSame(call, connectEnd.call);
-    assertEquals(expectedAddress, connectEnd.inetSocketAddress);
-    assertEquals(Protocol.HTTP_1_1, connectEnd.protocol);
+    assertThat(connectEnd.call).isSameAs(call);
+    assertThat(connectEnd.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectEnd.protocol).isEqualTo(Protocol.HTTP_1_1);
   }
 
   @Test public void failedConnect() throws UnknownHostException {
@@ -541,15 +523,15 @@ public final class EventListenerTest {
     InetSocketAddress expectedAddress = new InetSocketAddress(address, server.getPort());
 
     ConnectStart connectStart = listener.removeUpToEvent(ConnectStart.class);
-    assertSame(call, connectStart.call);
-    assertEquals(expectedAddress, connectStart.inetSocketAddress);
-    assertEquals(Proxy.NO_PROXY, connectStart.proxy);
+    assertThat(connectStart.call).isSameAs(call);
+    assertThat(connectStart.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectStart.proxy).isEqualTo(Proxy.NO_PROXY);
 
     ConnectFailed connectFailed = listener.removeUpToEvent(ConnectFailed.class);
-    assertSame(call, connectFailed.call);
-    assertEquals(expectedAddress, connectFailed.inetSocketAddress);
-    assertNull(connectFailed.protocol);
-    assertNotNull(connectFailed.ioe);
+    assertThat(connectFailed.call).isSameAs(call);
+    assertThat(connectFailed.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectFailed.protocol).isNull();
+    assertThat(connectFailed.ioe).isNotNull();
   }
 
   @Test public void multipleConnectsForSingleCall() throws IOException {
@@ -566,7 +548,7 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     listener.removeUpToEvent(ConnectStart.class);
@@ -586,21 +568,21 @@ public final class EventListenerTest {
         .url("http://www.fakeurl")
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     InetAddress address = client.dns().lookup(server.getHostName()).get(0);
     InetSocketAddress expectedAddress = new InetSocketAddress(address, server.getPort());
 
     ConnectStart connectStart = listener.removeUpToEvent(ConnectStart.class);
-    assertSame(call, connectStart.call);
-    assertEquals(expectedAddress, connectStart.inetSocketAddress);
-    assertEquals(server.toProxyAddress(), connectStart.proxy);
+    assertThat(connectStart.call).isSameAs(call);
+    assertThat(connectStart.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectStart.proxy).isEqualTo(server.toProxyAddress());
 
     ConnectEnd connectEnd = listener.removeUpToEvent(ConnectEnd.class);
-    assertSame(call, connectEnd.call);
-    assertEquals(expectedAddress, connectEnd.inetSocketAddress);
-    assertEquals(Protocol.HTTP_1_1, connectEnd.protocol);
+    assertThat(connectEnd.call).isSameAs(call);
+    assertThat(connectEnd.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectEnd.protocol).isEqualTo(Protocol.HTTP_1_1);
   }
 
   @Test public void successfulSocksProxyConnect() throws Exception {
@@ -618,21 +600,21 @@ public final class EventListenerTest {
         .url("http://" + SocksProxy.HOSTNAME_THAT_ONLY_THE_PROXY_KNOWS + ":" + server.getPort())
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     InetSocketAddress expectedAddress = InetSocketAddress.createUnresolved(
         SocksProxy.HOSTNAME_THAT_ONLY_THE_PROXY_KNOWS, server.getPort());
 
     ConnectStart connectStart = listener.removeUpToEvent(ConnectStart.class);
-    assertSame(call, connectStart.call);
-    assertEquals(expectedAddress, connectStart.inetSocketAddress);
-    assertEquals(proxy, connectStart.proxy);
+    assertThat(connectStart.call).isSameAs(call);
+    assertThat(connectStart.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectStart.proxy).isEqualTo(proxy);
 
     ConnectEnd connectEnd = listener.removeUpToEvent(ConnectEnd.class);
-    assertSame(call, connectEnd.call);
-    assertEquals(expectedAddress, connectEnd.inetSocketAddress);
-    assertEquals(Protocol.HTTP_1_1, connectEnd.protocol);
+    assertThat(connectEnd.call).isSameAs(call);
+    assertThat(connectEnd.inetSocketAddress).isEqualTo(expectedAddress);
+    assertThat(connectEnd.protocol).isEqualTo(Protocol.HTTP_1_1);
   }
 
   @Test public void authenticatingTunnelProxyConnect() throws IOException {
@@ -654,13 +636,13 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     listener.removeUpToEvent(ConnectStart.class);
 
     ConnectEnd connectEnd = listener.removeUpToEvent(ConnectEnd.class);
-    assertNull(connectEnd.protocol);
+    assertThat(connectEnd.protocol).isNull();
 
     listener.removeUpToEvent(ConnectStart.class);
     listener.removeUpToEvent(ConnectEnd.class);
@@ -674,15 +656,15 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     SecureConnectStart secureStart = listener.removeUpToEvent(SecureConnectStart.class);
-    assertSame(call, secureStart.call);
+    assertThat(secureStart.call).isSameAs(call);
 
     SecureConnectEnd secureEnd = listener.removeUpToEvent(SecureConnectEnd.class);
-    assertSame(call, secureEnd.call);
-    assertNotNull(secureEnd.handshake);
+    assertThat(secureEnd.call).isSameAs(call);
+    assertThat(secureEnd.handshake).isNotNull();
   }
 
   @Test public void failedSecureConnect() {
@@ -700,11 +682,11 @@ public final class EventListenerTest {
     }
 
     SecureConnectStart secureStart = listener.removeUpToEvent(SecureConnectStart.class);
-    assertSame(call, secureStart.call);
+    assertThat(secureStart.call).isSameAs(call);
 
     CallFailed callFailed = listener.removeUpToEvent(CallFailed.class);
-    assertSame(call, callFailed.call);
-    assertNotNull(callFailed.ioe);
+    assertThat(callFailed.call).isSameAs(call);
+    assertThat(callFailed.ioe).isNotNull();
   }
 
   @Test public void secureConnectWithTunnel() throws IOException {
@@ -721,15 +703,15 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     SecureConnectStart secureStart = listener.removeUpToEvent(SecureConnectStart.class);
-    assertSame(call, secureStart.call);
+    assertThat(secureStart.call).isSameAs(call);
 
     SecureConnectEnd secureEnd = listener.removeUpToEvent(SecureConnectEnd.class);
-    assertSame(call, secureEnd.call);
-    assertNotNull(secureEnd.handshake);
+    assertThat(secureEnd.call).isSameAs(call);
+    assertThat(secureEnd.handshake).isNotNull();
   }
 
   @Test public void multipleSecureConnectsForSingleCall() throws IOException {
@@ -746,7 +728,7 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     listener.removeUpToEvent(SecureConnectStart.class);
@@ -770,7 +752,7 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response1 = call1.execute();
-    assertEquals(200, response1.code());
+    assertThat(response1.code()).isEqualTo(200);
     response1.body().close();
 
     listener.clearAllEvents();
@@ -779,12 +761,12 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response2 = call2.execute();
-    assertEquals(200, response2.code());
+    assertThat(response2.code()).isEqualTo(200);
     response2.body().close();
 
     List<String> recordedEvents = listener.recordedEventTypes();
-    assertFalse(recordedEvents.contains("SecureConnectStart"));
-    assertFalse(recordedEvents.contains("SecureConnectEnd"));
+    assertThat(recordedEvents).doesNotContain("SecureConnectStart");
+    assertThat(recordedEvents).doesNotContain("SecureConnectEnd");
   }
 
   @Test public void successfulConnectionFound() throws IOException {
@@ -794,12 +776,12 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
+    assertThat(response.code()).isEqualTo(200);
     response.body().close();
 
     ConnectionAcquired connectionAcquired = listener.removeUpToEvent(ConnectionAcquired.class);
-    assertSame(call, connectionAcquired.call);
-    assertNotNull(connectionAcquired.connection);
+    assertThat(connectionAcquired.call).isSameAs(call);
+    assertThat(connectionAcquired.connection).isNotNull();
   }
 
   @Test public void noConnectionFoundOnFollowUp() throws IOException {
@@ -813,12 +795,12 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals("ABC", response.body().string());
+    assertThat(response.body().string()).isEqualTo("ABC");
 
     listener.removeUpToEvent(ConnectionAcquired.class);
 
     List<String> remainingEvents = listener.recordedEventTypes();
-    assertFalse(remainingEvents.contains("ConnectionAcquired"));
+    assertThat(remainingEvents).doesNotContain("ConnectionAcquired");
   }
 
   @Test public void pooledConnectionFound() throws IOException {
@@ -830,7 +812,7 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response1 = call1.execute();
-    assertEquals(200, response1.code());
+    assertThat(response1.code()).isEqualTo(200);
     response1.body().close();
 
     ConnectionAcquired connectionAcquired1 = listener.removeUpToEvent(ConnectionAcquired.class);
@@ -840,11 +822,12 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response2 = call2.execute();
-    assertEquals(200, response2.code());
+    assertThat(response2.code()).isEqualTo(200);
     response2.body().close();
 
     ConnectionAcquired connectionAcquired2 = listener.removeUpToEvent(ConnectionAcquired.class);
-    assertSame(connectionAcquired1.connection, connectionAcquired2.connection);
+    assertThat(connectionAcquired2.connection).isSameAs(
+        connectionAcquired1.connection);
   }
 
   @Test public void multipleConnectionsFoundForSingleCall() throws IOException {
@@ -859,7 +842,7 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals("ABC", response.body().string());
+    assertThat(response.body().string()).isEqualTo("ABC");
 
     listener.removeUpToEvent(ConnectionAcquired.class);
     listener.removeUpToEvent(ConnectionAcquired.class);
@@ -867,13 +850,13 @@ public final class EventListenerTest {
 
   @Test public void responseBodyFailHttp1OverHttps() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_1_1));
     responseBodyFail(Protocol.HTTP_1_1);
   }
 
   @Test public void responseBodyFailHttp2OverHttps() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     responseBodyFail(Protocol.HTTP_2);
   }
 
@@ -896,7 +879,7 @@ public final class EventListenerTest {
       // soft failure since client may not support depending on Platform
       assumeThat(response, matchesProtocol(Protocol.HTTP_2));
     }
-    assertEquals(expectedProtocol, response.protocol());
+    assertThat(response.protocol()).isEqualTo(expectedProtocol);
     try {
       response.body.string();
       fail();
@@ -904,7 +887,7 @@ public final class EventListenerTest {
     }
 
     CallFailed callFailed = listener.removeUpToEvent(CallFailed.class);
-    assertNotNull(callFailed.ioe);
+    assertThat(callFailed.ioe).isNotNull();
   }
 
   @Test public void emptyResponseBody() throws IOException {
@@ -919,11 +902,10 @@ public final class EventListenerTest {
     Response response = call.execute();
     response.body().close();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void emptyResponseBodyConnectionClose() throws IOException {
@@ -937,11 +919,10 @@ public final class EventListenerTest {
     Response response = call.execute();
     response.body().close();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void responseBodyClosedClosedWithoutReadingAllData() throws IOException {
@@ -956,22 +937,21 @@ public final class EventListenerTest {
     Response response = call.execute();
     response.body().close();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void requestBodyFailHttp1OverHttps() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_1_1));
     requestBodyFail();
   }
 
   @Test public void requestBodyFailHttp2OverHttps() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     requestBodyFail();
   }
 
@@ -1012,7 +992,7 @@ public final class EventListenerTest {
     }
 
     CallFailed callFailed = listener.removeUpToEvent(CallFailed.class);
-    assertNotNull(callFailed.ioe);
+    assertThat(callFailed.ioe).isNotNull();
   }
 
   @Test public void requestBodyMultipleFailuresReportedOnlyOnce() {
@@ -1052,22 +1032,22 @@ public final class EventListenerTest {
     } catch (IOException expected) {
     }
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+    assertThat(listener.recordedEventTypes()).containsExactly(
+        "CallStart", "DnsStart", "DnsEnd", "ConnectStart",
         "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart", "RequestHeadersEnd",
         "RequestBodyStart", "RequestFailed", "ConnectionReleased", "CallFailed");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void requestBodySuccessHttp1OverHttps() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_1_1));
     requestBodySuccess(RequestBody.create(MediaType.get("text/plain"), "Hello"), equalTo(5L),
         equalTo(19L));
   }
 
   @Test public void requestBodySuccessHttp2OverHttps() throws IOException {
     enableTlsWithTunnel(false);
-    server.setProtocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+    server.setProtocols(asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
     requestBodySuccess(RequestBody.create(MediaType.get("text/plain"), "Hello"), equalTo(5L),
         equalTo(19L));
   }
@@ -1108,15 +1088,14 @@ public final class EventListenerTest {
         .url(server.url("/"))
         .build());
     Response response = call.execute();
-    assertEquals(200, response.code());
-    assertEquals("abc", response.body().string());
+    assertThat(response.code()).isEqualTo(200);
+    assertThat(response.body().string()).isEqualTo("abc");
     response.body().close();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   private void requestBodySuccess(RequestBody body, Matcher<Long> requestBodyBytes,
@@ -1128,7 +1107,7 @@ public final class EventListenerTest {
         .post(body)
         .build());
     Response response = call.execute();
-    assertEquals("World!", response.body().string());
+    assertThat(response.body().string()).isEqualTo("World!");
 
     assertBytesReadWritten(listener, any(Long.class), requestBodyBytes, responseHeaderLength,
         equalTo(6L));
@@ -1153,13 +1132,12 @@ public final class EventListenerTest {
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     call.execute();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "RequestHeadersStart", "RequestHeadersEnd", "ResponseHeadersStart",
         "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "ConnectionReleased",
         "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test
@@ -1172,16 +1150,15 @@ public final class EventListenerTest {
     otherServer.enqueue(new MockResponse());
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
-    Response response = call.execute();
+    call.execute();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "ConnectionReleased", "DnsStart", "DnsEnd", "ConnectStart", "ConnectEnd",
         "ConnectionAcquired", "RequestHeadersStart", "RequestHeadersEnd", "ResponseHeadersStart",
         "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "ConnectionReleased",
         "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 
   @Test public void applicationInterceptorProceedsMultipleTimes() throws Exception {
@@ -1191,7 +1168,7 @@ public final class EventListenerTest {
     client = client.newBuilder()
         .addInterceptor(chain -> {
           try (Response a = chain.proceed(chain.request())) {
-            assertEquals("a", a.body().string());
+            assertThat(a.body().string()).isEqualTo("a");
           }
           return chain.proceed(chain.request());
         })
@@ -1199,18 +1176,17 @@ public final class EventListenerTest {
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     Response response = call.execute();
-    assertEquals("b", response.body().string());
+    assertThat(response.body().string()).isEqualTo("b");
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd",
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "DnsStart", "DnsEnd",
         "ConnectStart", "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart",
         "RequestHeadersEnd", "ResponseHeadersStart", "ResponseHeadersEnd", "ResponseBodyStart",
         "ResponseBodyEnd", "RequestHeadersStart", "RequestHeadersEnd", "ResponseHeadersStart",
         "ResponseHeadersEnd", "ResponseBodyStart", "ResponseBodyEnd", "ConnectionReleased",
         "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
 
-    assertEquals(0, server.takeRequest().getSequenceNumber());
-    assertEquals(1, server.takeRequest().getSequenceNumber());
+    assertThat(server.takeRequest().getSequenceNumber()).isEqualTo(0);
+    assertThat(server.takeRequest().getSequenceNumber()).isEqualTo(1);
   }
 
   @Test public void applicationInterceptorShortCircuit() throws Exception {
@@ -1226,10 +1202,9 @@ public final class EventListenerTest {
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     Response response = call.execute();
-    assertEquals("a", response.body().string());
+    assertThat(response.body().string()).isEqualTo("a");
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
+    assertThat(listener.recordedEventTypes()).containsExactly("CallStart", "CallEnd");
   }
 
   /** Response headers start, then the entire request body, then response headers end. */
@@ -1246,10 +1221,10 @@ public final class EventListenerTest {
     Call call = client.newCall(request);
     call.execute();
 
-    List<String> expectedEvents = Arrays.asList("CallStart", "DnsStart", "DnsEnd", "ConnectStart",
+    assertThat(listener.recordedEventTypes()).containsExactly(
+        "CallStart", "DnsStart", "DnsEnd", "ConnectStart",
         "ConnectEnd", "ConnectionAcquired", "RequestHeadersStart", "RequestHeadersEnd",
         "ResponseHeadersStart", "RequestBodyStart", "RequestBodyEnd", "ResponseHeadersEnd",
         "ResponseBodyStart", "ResponseBodyEnd", "ConnectionReleased", "CallEnd");
-    assertEquals(expectedEvents, listener.recordedEventTypes());
   }
 }

@@ -28,10 +28,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import static java.util.Arrays.asList;
 import static okhttp3.TestUtil.defaultClient;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertSame;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 public final class OkHttpClientTest {
@@ -53,11 +52,11 @@ public final class OkHttpClientTest {
 
   @Test public void durationDefaults() {
     OkHttpClient client = defaultClient();
-    assertEquals(0, client.callTimeoutMillis());
-    assertEquals(10_000, client.connectTimeoutMillis());
-    assertEquals(10_000, client.readTimeoutMillis());
-    assertEquals(10_000, client.writeTimeoutMillis());
-    assertEquals(0, client.pingIntervalMillis());
+    assertThat(client.callTimeoutMillis()).isEqualTo(0);
+    assertThat(client.connectTimeoutMillis()).isEqualTo(10_000);
+    assertThat(client.readTimeoutMillis()).isEqualTo(10_000);
+    assertThat(client.writeTimeoutMillis()).isEqualTo(10_000);
+    assertThat(client.pingIntervalMillis()).isEqualTo(0);
   }
 
   @Test public void timeoutValidRange() {
@@ -103,8 +102,8 @@ public final class OkHttpClientTest {
         .addInterceptor(interceptor)
         .addNetworkInterceptor(interceptor)
         .build();
-    assertEquals(0, original.interceptors().size());
-    assertEquals(0, original.networkInterceptors().size());
+    assertThat(original.interceptors().size()).isEqualTo(0);
+    assertThat(original.networkInterceptors().size()).isEqualTo(0);
   }
 
   /**
@@ -116,21 +115,21 @@ public final class OkHttpClientTest {
 
     // Values should be non-null.
     OkHttpClient a = client.newBuilder().build();
-    assertNotNull(a.dispatcher());
-    assertNotNull(a.connectionPool());
-    assertNotNull(a.sslSocketFactory());
+    assertThat(a.dispatcher()).isNotNull();
+    assertThat(a.connectionPool()).isNotNull();
+    assertThat(a.sslSocketFactory()).isNotNull();
 
     // Multiple clients share the instances.
     OkHttpClient b = client.newBuilder().build();
-    assertSame(a.dispatcher(), b.dispatcher());
-    assertSame(a.connectionPool(), b.connectionPool());
-    assertSame(a.sslSocketFactory(), b.sslSocketFactory());
+    assertThat(b.dispatcher()).isSameAs(a.dispatcher());
+    assertThat(b.connectionPool()).isSameAs(a.connectionPool());
+    assertThat(b.sslSocketFactory()).isSameAs(a.sslSocketFactory());
   }
 
   @Test public void setProtocolsRejectsHttp10() throws Exception {
     OkHttpClient.Builder builder = new OkHttpClient.Builder();
     try {
-      builder.protocols(Arrays.asList(Protocol.HTTP_1_0, Protocol.HTTP_1_1));
+      builder.protocols(asList(Protocol.HTTP_1_0, Protocol.HTTP_1_1));
       fail();
     } catch (IllegalArgumentException expected) {
     }
@@ -139,7 +138,7 @@ public final class OkHttpClientTest {
   @Test public void certificatePinnerEquality() {
     OkHttpClient clientA = TestUtil.defaultClient();
     OkHttpClient clientB = TestUtil.defaultClient();
-    assertEquals(clientA.certificatePinner(), clientB.certificatePinner());
+    assertThat(clientB.certificatePinner()).isEqualTo(clientA.certificatePinner());
   }
 
   @Test public void nullInterceptor() {
@@ -148,7 +147,7 @@ public final class OkHttpClientTest {
       builder.addInterceptor(null);
       fail();
     } catch (IllegalArgumentException expected) {
-      assertEquals("interceptor == null", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("interceptor == null");
     }
   }
 
@@ -158,7 +157,7 @@ public final class OkHttpClientTest {
       builder.addNetworkInterceptor(null);
       fail();
     } catch (IllegalArgumentException expected) {
-      assertEquals("interceptor == null", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("interceptor == null");
     }
   }
 
@@ -169,7 +168,7 @@ public final class OkHttpClientTest {
       builder.build();
       fail();
     } catch (IllegalStateException expected) {
-      assertEquals("Null interceptor: [null]", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("Null interceptor: [null]");
     }
   }
 
@@ -180,38 +179,40 @@ public final class OkHttpClientTest {
       builder.build();
       fail();
     } catch (IllegalStateException expected) {
-      assertEquals("Null network interceptor: [null]", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("Null network interceptor: [null]");
     }
   }
 
   @Test public void testH2PriorKnowledgeOkHttpClientConstructionFallback() {
     try {
       new OkHttpClient.Builder()
-          .protocols(Arrays.asList(Protocol.H2_PRIOR_KNOWLEDGE, Protocol.HTTP_1_1));
+          .protocols(asList(Protocol.H2_PRIOR_KNOWLEDGE, Protocol.HTTP_1_1));
       fail();
     } catch (IllegalArgumentException expected) {
-      assertEquals("protocols containing h2_prior_knowledge cannot use other protocols: "
-          + "[h2_prior_knowledge, http/1.1]", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo(
+          ("protocols containing h2_prior_knowledge cannot use other protocols: "
+            + "[h2_prior_knowledge, http/1.1]"));
     }
   }
 
   @Test public void testH2PriorKnowledgeOkHttpClientConstructionDuplicates() {
     try {
       new OkHttpClient.Builder()
-          .protocols(Arrays.asList(Protocol.H2_PRIOR_KNOWLEDGE, Protocol.H2_PRIOR_KNOWLEDGE));
+          .protocols(asList(Protocol.H2_PRIOR_KNOWLEDGE, Protocol.H2_PRIOR_KNOWLEDGE));
       fail();
     } catch (IllegalArgumentException expected) {
-      assertEquals("protocols containing h2_prior_knowledge cannot use other protocols: "
-          + "[h2_prior_knowledge, h2_prior_knowledge]", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo(
+          ("protocols containing h2_prior_knowledge cannot use other protocols: "
+            + "[h2_prior_knowledge, h2_prior_knowledge]"));
     }
   }
 
   @Test public void testH2PriorKnowledgeOkHttpClientConstructionSuccess() {
     OkHttpClient okHttpClient = new OkHttpClient.Builder()
-        .protocols(Arrays.asList(Protocol.H2_PRIOR_KNOWLEDGE))
+        .protocols(asList(Protocol.H2_PRIOR_KNOWLEDGE))
         .build();
-    assertEquals(1, okHttpClient.protocols().size());
-    assertEquals(Protocol.H2_PRIOR_KNOWLEDGE, okHttpClient.protocols().get(0));
+    assertThat(okHttpClient.protocols().size()).isEqualTo(1);
+    assertThat(okHttpClient.protocols().get(0)).isEqualTo(Protocol.H2_PRIOR_KNOWLEDGE);
   }
 
   @Test public void nullDefaultProxySelector() throws Exception {
@@ -224,7 +225,7 @@ public final class OkHttpClientTest {
 
     Request request = new Request.Builder().url(server.url("/")).build();
     Response response = client.newCall(request).execute();
-    assertEquals("abc", response.body().string());
+    assertThat(response.body().string()).isEqualTo("abc");
   }
 
   @Test public void sslSocketFactorySetAsSocketFactory() throws Exception {

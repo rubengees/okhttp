@@ -15,18 +15,16 @@
  */
 package okhttp3;
 
-import java.util.Arrays;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static java.util.Arrays.asList;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 public final class ConnectionSpecTest {
@@ -37,7 +35,7 @@ public final class ConnectionSpecTest {
           .build();
       fail();
     } catch (IllegalArgumentException expected) {
-      assertEquals("At least one TLS version is required", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("At least one TLS version is required");
     }
   }
 
@@ -48,13 +46,13 @@ public final class ConnectionSpecTest {
           .build();
       fail();
     } catch (IllegalArgumentException expected) {
-      assertEquals("At least one cipher suite is required", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("At least one cipher suite is required");
     }
   }
 
   @Test public void cleartextBuilder() throws Exception {
     ConnectionSpec cleartextSpec = new ConnectionSpec.Builder(false).build();
-    assertFalse(cleartextSpec.isTls());
+    assertThat(cleartextSpec.isTls()).isFalse();
   }
 
   @Test public void tlsBuilder_explicitCiphers() throws Exception {
@@ -63,9 +61,9 @@ public final class ConnectionSpecTest {
         .tlsVersions(TlsVersion.TLS_1_2)
         .supportsTlsExtensions(true)
         .build();
-    assertEquals(Arrays.asList(CipherSuite.TLS_RSA_WITH_RC4_128_MD5), tlsSpec.cipherSuites());
-    assertEquals(Arrays.asList(TlsVersion.TLS_1_2), tlsSpec.tlsVersions());
-    assertTrue(tlsSpec.supportsTlsExtensions());
+    assertThat(tlsSpec.cipherSuites()).containsExactly(CipherSuite.TLS_RSA_WITH_RC4_128_MD5);
+    assertThat(tlsSpec.tlsVersions()).containsExactly(TlsVersion.TLS_1_2);
+    assertThat(tlsSpec.supportsTlsExtensions()).isTrue();
   }
 
   @Test public void tlsBuilder_defaultCiphers() throws Exception {
@@ -73,9 +71,9 @@ public final class ConnectionSpecTest {
         .tlsVersions(TlsVersion.TLS_1_2)
         .supportsTlsExtensions(true)
         .build();
-    assertNull(tlsSpec.cipherSuites());
-    assertEquals(Arrays.asList(TlsVersion.TLS_1_2), tlsSpec.tlsVersions());
-    assertTrue(tlsSpec.supportsTlsExtensions());
+    assertThat(tlsSpec.cipherSuites()).isNull();
+    assertThat(tlsSpec.tlsVersions()).containsExactly(TlsVersion.TLS_1_2);
+    assertThat(tlsSpec.supportsTlsExtensions()).isTrue();
   }
 
   @Test public void tls_defaultCiphers_noFallbackIndicator() throws Exception {
@@ -94,16 +92,14 @@ public final class ConnectionSpecTest {
         TlsVersion.TLS_1_1.javaName,
     });
 
-    assertTrue(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isTrue();
     tlsSpec.apply(socket, false /* isFallback */);
 
-    assertEquals(set(TlsVersion.TLS_1_2.javaName), set(socket.getEnabledProtocols()));
+    assertThat(socket.getEnabledProtocols()).containsExactly(TlsVersion.TLS_1_2.javaName);
 
-    Set<String> expectedCipherSet =
-        set(
-            CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName,
-            CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName);
-    assertEquals(expectedCipherSet, expectedCipherSet);
+    assertThat(socket.getEnabledCipherSuites()).containsExactlyInAnyOrder(
+        CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName,
+        CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName);
   }
 
   @Test public void tls_defaultCiphers_withFallbackIndicator() throws Exception {
@@ -122,19 +118,18 @@ public final class ConnectionSpecTest {
         TlsVersion.TLS_1_1.javaName,
     });
 
-    assertTrue(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isTrue();
     tlsSpec.apply(socket, true /* isFallback */);
 
-    assertEquals(set(TlsVersion.TLS_1_2.javaName), set(socket.getEnabledProtocols()));
+    assertThat(socket.getEnabledProtocols()).containsExactly(TlsVersion.TLS_1_2.javaName);
 
-    Set<String> expectedCipherSet =
-        set(
-            CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName,
-            CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName);
-    if (Arrays.asList(socket.getSupportedCipherSuites()).contains("TLS_FALLBACK_SCSV")) {
-      expectedCipherSet.add("TLS_FALLBACK_SCSV");
+    List<String> expectedCipherSuites = new ArrayList<>();
+    expectedCipherSuites.add(CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName);
+    expectedCipherSuites.add(CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName);
+    if (asList(socket.getSupportedCipherSuites()).contains("TLS_FALLBACK_SCSV")) {
+      expectedCipherSuites.add("TLS_FALLBACK_SCSV");
     }
-    assertEquals(expectedCipherSet, expectedCipherSet);
+    assertThat(socket.getEnabledCipherSuites()).containsExactlyElementsOf(expectedCipherSuites);
   }
 
   @Test public void tls_explicitCiphers() throws Exception {
@@ -154,16 +149,17 @@ public final class ConnectionSpecTest {
         TlsVersion.TLS_1_1.javaName,
     });
 
-    assertTrue(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isTrue();
     tlsSpec.apply(socket, true /* isFallback */);
 
-    assertEquals(set(TlsVersion.TLS_1_2.javaName), set(socket.getEnabledProtocols()));
+    assertThat(socket.getEnabledProtocols()).containsExactly(TlsVersion.TLS_1_2.javaName);
 
-    Set<String> expectedCipherSet = set(CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName);
-    if (Arrays.asList(socket.getSupportedCipherSuites()).contains("TLS_FALLBACK_SCSV")) {
-      expectedCipherSet.add("TLS_FALLBACK_SCSV");
+    List<String> expectedCipherSuites = new ArrayList<>();
+    expectedCipherSuites.add(CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName);
+    if (asList(socket.getSupportedCipherSuites()).contains("TLS_FALLBACK_SCSV")) {
+      expectedCipherSuites.add("TLS_FALLBACK_SCSV");
     }
-    assertEquals(expectedCipherSet, expectedCipherSet);
+    assertThat(socket.getEnabledCipherSuites()).containsExactlyElementsOf(expectedCipherSuites);
   }
 
   @Test public void tls_stringCiphersAndVersions() throws Exception {
@@ -192,19 +188,19 @@ public final class ConnectionSpecTest {
         CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName,
         CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName,
     });
-    assertTrue(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isTrue();
 
     socket.setEnabledCipherSuites(new String[] {
         CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName,
     });
-    assertFalse(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isFalse();
   }
 
   @Test public void allEnabledCipherSuites() throws Exception {
     ConnectionSpec tlsSpec = new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
         .allEnabledCipherSuites()
         .build();
-    assertNull(tlsSpec.cipherSuites());
+    assertThat(tlsSpec.cipherSuites()).isNull();
 
     SSLSocket sslSocket = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
     sslSocket.setEnabledCipherSuites(new String[] {
@@ -213,17 +209,16 @@ public final class ConnectionSpecTest {
     });
 
     tlsSpec.apply(sslSocket, false);
-    assertEquals(Arrays.asList(
+    assertThat(sslSocket.getEnabledCipherSuites()).containsExactly(
         CipherSuite.TLS_RSA_WITH_RC4_128_SHA.javaName,
-        CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName),
-        Arrays.asList(sslSocket.getEnabledCipherSuites()));
+        CipherSuite.TLS_RSA_WITH_RC4_128_MD5.javaName);
   }
 
   @Test public void allEnabledTlsVersions() throws Exception {
     ConnectionSpec tlsSpec = new ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
         .allEnabledTlsVersions()
         .build();
-    assertNull(tlsSpec.tlsVersions());
+    assertThat(tlsSpec.tlsVersions()).isNull();
 
     SSLSocket sslSocket = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
     sslSocket.setEnabledProtocols(new String[] {
@@ -232,8 +227,8 @@ public final class ConnectionSpecTest {
     });
 
     tlsSpec.apply(sslSocket, false);
-    assertEquals(Arrays.asList(TlsVersion.SSL_3_0.javaName(), TlsVersion.TLS_1_1.javaName()),
-        Arrays.asList(sslSocket.getEnabledProtocols()));
+    assertThat(sslSocket.getEnabledProtocols()).containsExactly(
+        TlsVersion.SSL_3_0.javaName(), TlsVersion.TLS_1_1.javaName());
   }
 
   @Test public void tls_missingTlsVersion() throws Exception {
@@ -250,10 +245,10 @@ public final class ConnectionSpecTest {
 
     socket.setEnabledProtocols(
         new String[] {TlsVersion.TLS_1_2.javaName, TlsVersion.TLS_1_1.javaName});
-    assertTrue(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isTrue();
 
     socket.setEnabledProtocols(new String[] {TlsVersion.TLS_1_1.javaName});
-    assertFalse(tlsSpec.isCompatible(socket));
+    assertThat(tlsSpec.isCompatible(socket)).isFalse();
   }
 
   @Test public void equalsAndHashCode() throws Exception {
@@ -265,18 +260,18 @@ public final class ConnectionSpecTest {
         .build();
 
     Set<Object> set = new CopyOnWriteArraySet<>();
-    assertTrue(set.add(ConnectionSpec.MODERN_TLS));
-    assertTrue(set.add(ConnectionSpec.COMPATIBLE_TLS));
-    assertTrue(set.add(ConnectionSpec.CLEARTEXT));
-    assertTrue(set.add(allTlsVersions));
-    assertTrue(set.add(allCipherSuites));
+    assertThat(set.add(ConnectionSpec.MODERN_TLS)).isTrue();
+    assertThat(set.add(ConnectionSpec.COMPATIBLE_TLS)).isTrue();
+    assertThat(set.add(ConnectionSpec.CLEARTEXT)).isTrue();
+    assertThat(set.add(allTlsVersions)).isTrue();
+    assertThat(set.add(allCipherSuites)).isTrue();
 
-    assertTrue(set.remove(ConnectionSpec.MODERN_TLS));
-    assertTrue(set.remove(ConnectionSpec.COMPATIBLE_TLS));
-    assertTrue(set.remove(ConnectionSpec.CLEARTEXT));
-    assertTrue(set.remove(allTlsVersions));
-    assertTrue(set.remove(allCipherSuites));
-    assertTrue(set.isEmpty());
+    assertThat(set.remove(ConnectionSpec.MODERN_TLS)).isTrue();
+    assertThat(set.remove(ConnectionSpec.COMPATIBLE_TLS)).isTrue();
+    assertThat(set.remove(ConnectionSpec.CLEARTEXT)).isTrue();
+    assertThat(set.remove(allTlsVersions)).isTrue();
+    assertThat(set.remove(allCipherSuites)).isTrue();
+    assertThat(set).isEmpty();
   }
 
   @Test public void allEnabledToString() throws Exception {
@@ -284,8 +279,9 @@ public final class ConnectionSpecTest {
         .allEnabledTlsVersions()
         .allEnabledCipherSuites()
         .build();
-    assertEquals("ConnectionSpec(cipherSuites=[all enabled], tlsVersions=[all enabled], "
-        + "supportsTlsExtensions=true)", connectionSpec.toString());
+    assertThat(connectionSpec.toString()).isEqualTo(
+        ("ConnectionSpec(cipherSuites=[all enabled], tlsVersions=[all enabled], "
+        + "supportsTlsExtensions=true)"));
   }
 
   @Test public void simpleToString() throws Exception {
@@ -293,11 +289,8 @@ public final class ConnectionSpecTest {
         .tlsVersions(TlsVersion.TLS_1_2)
         .cipherSuites(CipherSuite.TLS_RSA_WITH_RC4_128_MD5)
         .build();
-    assertEquals("ConnectionSpec(cipherSuites=[SSL_RSA_WITH_RC4_128_MD5], tlsVersions=[TLS_1_2], "
-        + "supportsTlsExtensions=true)", connectionSpec.toString());
-  }
-
-  private static <T> Set<T> set(T... values) {
-    return new LinkedHashSet<>(Arrays.asList(values));
+    assertThat(connectionSpec.toString()).isEqualTo(
+        ("ConnectionSpec(cipherSuites=[SSL_RSA_WITH_RC4_128_MD5], tlsVersions=[TLS_1_2], "
+        + "supportsTlsExtensions=true)"));
   }
 }

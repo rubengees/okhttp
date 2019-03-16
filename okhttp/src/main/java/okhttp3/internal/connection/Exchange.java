@@ -147,9 +147,17 @@ public final class Exchange {
     return codec.trailers();
   }
 
+  public void timeoutEarlyExit() {
+    transmitter.timeoutEarlyExit();
+  }
+
   public RealWebSocket.Streams newWebSocketStreams() throws SocketException {
     transmitter.timeoutEarlyExit();
     return codec.connection().newWebSocketStreams(this);
+  }
+
+  public void webSocketUpgradeFailed() {
+    bodyComplete(-1L, true, true, null);
   }
 
   public void noNewExchangesOnConnection() {
@@ -258,7 +266,7 @@ public final class Exchange {
 
   /** A response body that fires events when it completes. */
   final class ResponseBodySource extends ForwardingSource {
-    final private long contentLength;
+    private final long contentLength;
     private long bytesReceived;
     private boolean completed;
     private boolean closed;

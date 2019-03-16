@@ -22,8 +22,8 @@ import okio.Buffer;
 import okio.ByteString;
 import org.junit.Test;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertArrayEquals;
 
 /** Original version of this class was lifted from {@code com.twitter.hpack.HuffmanTest}. */
 public final class HuffmanTest {
@@ -42,9 +42,9 @@ public final class HuffmanTest {
   private void assertRoundTrip(ByteString data) throws IOException {
     Buffer buffer = new Buffer();
     Huffman.get().encode(data, buffer);
-    assertEquals(buffer.size(), Huffman.get().encodedLength(data));
+    assertThat(Huffman.get().encodedLength(data)).isEqualTo(buffer.size());
 
     byte[] decodedBytes = Huffman.get().decode(buffer.readByteArray());
-    assertTrue(Arrays.equals(data.toByteArray(), decodedBytes));
+    assertArrayEquals(data.toByteArray(), decodedBytes);;
   }
 }

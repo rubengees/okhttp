@@ -20,14 +20,13 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import javax.annotation.Nullable;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static java.util.Arrays.asList;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public final class RecordingEventListener extends EventListener {
   final Deque<CallEvent> eventSequence = new ConcurrentLinkedDeque<>();
@@ -44,11 +43,15 @@ public final class RecordingEventListener extends EventListener {
    * {@code eventClass} and returns it.
    */
   public <T> T removeUpToEvent(Class<T> eventClass) {
+    List<CallEvent> fullEventSequence = new ArrayList<>(eventSequence);
     Object event = eventSequence.poll();
     while (event != null && !eventClass.isInstance(event)) {
       event = eventSequence.poll();
     }
-    if (event == null) throw new AssertionError();
+    if (event == null) {
+      throw new AssertionError(
+          eventClass.getSimpleName() + " not found. Found " + fullEventSequence + ".");
+    }
     return eventClass.cast(event);
   }
 
@@ -66,14 +69,13 @@ public final class RecordingEventListener extends EventListener {
 
   private void logEvent(CallEvent e) {
     for (Object lock : forbiddenLocks) {
-      assertFalse(lock.toString(), Thread.holdsLock(lock));
+      assertThat(Thread.holdsLock(lock)).overridingErrorMessage(lock.toString()).isFalse();
     }
 
     CallEvent startEvent = e.closes();
 
     if (startEvent != null) {
-      assertTrue(e.getName() + " without matching " + startEvent.getName(),
-          eventSequence.contains(startEvent));
+      assertThat(eventSequence).contains(startEvent);
     }
 
     eventSequence.offer(e);
@@ -176,7 +178,7 @@ public final class RecordingEventListener extends EventListener {
 
     CallEvent(Call call, Object... params) {
       this.call = call;
-      this.params = Arrays.asList(params);
+      this.params = asList(params);
     }
 
     public String getName() {

@@ -35,7 +35,7 @@ import static java.util.Arrays.asList;
 import static okhttp3.Protocol.HTTP_1_1;
 import static okhttp3.Protocol.HTTP_2;
 import static okhttp3.tls.internal.TlsUtil.localhost;
-import static org.junit.Assert.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 
 public final class LoggingEventListenerTest {
@@ -67,7 +67,7 @@ public final class LoggingEventListenerTest {
   public void get() throws Exception {
     server.enqueue(new MockResponse().setBody("Hello!").setHeader("Content-Type", PLAIN));
     Response response = client.newCall(request().build()).execute();
-    assertNotNull(response.body());
+    assertThat(response.body()).isNotNull();
     response.body().bytes();
 
     logRecorder
@@ -136,7 +136,7 @@ public final class LoggingEventListenerTest {
 
     server.enqueue(new MockResponse());
     Response response = client.newCall(request().build()).execute();
-    assertNotNull(response.body());
+    assertThat(response.body()).isNotNull();
     response.body().bytes();
 
     logRecorder
@@ -147,7 +147,7 @@ public final class LoggingEventListenerTest {
         .assertLogMatch("secureConnectStart")
         .assertLogMatch("secureConnectEnd: Handshake\\{"
             + "tlsVersion=TLS_1_[23] "
-            + "cipherSuite=(?:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384|TLS_AES_128_GCM_SHA256) "
+            + "cipherSuite=TLS_.* "
             + "peerCertificates=\\[CN=localhost\\] "
             + "localCertificates=\\[\\]}")
         .assertLogMatch("connectEnd: h2")

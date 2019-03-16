@@ -34,6 +34,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import okhttp3.Headers;
 import okhttp3.internal.NamedRunnable;
 import okhttp3.internal.Util;
@@ -324,7 +325,7 @@ public final class Http2Connection implements Closeable {
           try {
             writeSynReset(streamId, errorCode);
           } catch (IOException e) {
-            failConnection();
+            failConnection(e);
           }
         }
       });
@@ -345,7 +346,7 @@ public final class Http2Connection implements Closeable {
               try {
                 writer.windowUpdate(streamId, unacknowledgedBytesRead);
               } catch (IOException e) {
-                failConnection();
+                failConnection(e);
               }
             }
           });
@@ -379,7 +380,7 @@ public final class Http2Connection implements Closeable {
         awaitingPong = true;
       }
       if (failedDueToMissingPong) {
-        failConnection();
+        failConnection(null);
         return;
       }
     }
@@ -387,7 +388,7 @@ public final class Http2Connection implements Closeable {
     try {
       writer.ping(reply, payload1, payload2);
     } catch (IOException e) {
-      failConnection();
+      failConnection(e);
     }
   }
 
@@ -433,17 +434,15 @@ public final class Http2Connection implements Closeable {
    * Closes this connection. This cancels all open streams and unanswered pings. It closes the
    * underlying input and output streams and shuts down internal executor services.
    */
-  @Override public void close() throws IOException {
-    close(ErrorCode.NO_ERROR, ErrorCode.CANCEL);
+  @Override public void close() {
+    close(ErrorCode.NO_ERROR, ErrorCode.CANCEL, null);
   }
 
-  void close(ErrorCode connectionCode, ErrorCode streamCode) throws IOException {
+  void close(ErrorCode connectionCode, ErrorCode streamCode, @Nullable IOException cause) {
     assert (!Thread.holdsLock(this));
-    IOException thrown = null;
     try {
       shutdown(connectionCode);
-    } catch (IOException e) {
-      thrown = e;
+    } catch (IOException ignored) {
     }
 
     Http2Stream[] streamsToClose = null;
@@ -457,9 +456,8 @@ public final class Http2Connection implements Closeable {
     if (streamsToClose != null) {
       for (Http2Stream stream : streamsToClose) {
         try {
-          stream.close(streamCode);
-        } catch (IOException e) {
-          if (thrown != null) thrown = e;
+          stream.close(streamCode, cause);
+        } catch (IOException ignored) {
         }
       }
     }
@@ -467,29 +465,22 @@ public final class Http2Connection implements Closeable {
     // Close the writer to release its resources (such as deflaters).
     try {
       writer.close();
-    } catch (IOException e) {
-      if (thrown == null) thrown = e;
+    } catch (IOException ignored) {
     }
 
     // Close the socket to break out the reader thread, which will clean up after itself.
     try {
       socket.close();
-    } catch (IOException e) {
-      thrown = e;
+    } catch (IOException ignored) {
     }
 
     // Release the threads.
     writerExecutor.shutdown();
     pushExecutor.shutdown();
-
-    if (thrown != null) throw thrown;
   }
 
-  private void failConnection() {
-    try {
-      close(ErrorCode.PROTOCOL_ERROR, ErrorCode.PROTOCOL_ERROR);
-    } catch (IOException ignored) {
-    }
+  private void failConnection(@Nullable IOException e) {
+    close(ErrorCode.PROTOCOL_ERROR, ErrorCode.PROTOCOL_ERROR, e);
   }
 
   /**
@@ -604,6 +595,7 @@ public final class Http2Connection implements Closeable {
     @Override protected void execute() {
       ErrorCode connectionErrorCode = ErrorCode.INTERNAL_ERROR;
       ErrorCode streamErrorCode = ErrorCode.INTERNAL_ERROR;
+      IOException errorException = null;
       try {
         reader.readConnectionPreface(this);
         while (reader.nextFrame(false, this)) {
@@ -611,13 +603,11 @@ public final class Http2Connection implements Closeable {
         connectionErrorCode = ErrorCode.NO_ERROR;
         streamErrorCode = ErrorCode.CANCEL;
       } catch (IOException e) {
+        errorException = e;
         connectionErrorCode = ErrorCode.PROTOCOL_ERROR;
         streamErrorCode = ErrorCode.PROTOCOL_ERROR;
       } finally {
-        try {
-          close(connectionErrorCode, streamErrorCode);
-        } catch (IOException ignored) {
-        }
+        close(connectionErrorCode, streamErrorCode, errorException);
         Util.closeQuietly(reader);
       }
     }
@@ -676,7 +666,7 @@ public final class Http2Connection implements Closeable {
                 Platform.get().log(
                     INFO, "Http2Connection.Listener failure for " + connectionName, e);
                 try {
-                  newStream.close(ErrorCode.PROTOCOL_ERROR);
+                  newStream.close(ErrorCode.PROTOCOL_ERROR, e);
                 } catch (IOException ignored) {
                 }
               }
@@ -741,7 +731,7 @@ public final class Http2Connection implements Closeable {
             try {
               writer.applyAndAckSettings(peerSettings);
             } catch (IOException e) {
-              failConnection();
+              failConnection(e);
             }
           }
         });
@@ -929,7 +919,7 @@ public final class Http2Connection implements Closeable {
   public abstract static class Listener {
     public static final Listener REFUSE_INCOMING_STREAMS = new Listener() {
       @Override public void onStream(Http2Stream stream) throws IOException {
-        stream.close(REFUSED_STREAM);
+        stream.close(REFUSED_STREAM, null);
       }
     };
 

@@ -15,6 +15,7 @@
  */
 package okhttp3.internal.http2;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.Socket;
@@ -43,6 +44,7 @@ import org.junit.rules.TestRule;
 import org.junit.rules.Timeout;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.asList;
 import static okhttp3.TestUtil.headerEntries;
 import static okhttp3.TestUtil.repeat;
 import static okhttp3.internal.Internal.initializeInstanceForTests;
@@ -55,15 +57,16 @@ import static okhttp3.internal.http2.Settings.HEADER_TABLE_SIZE;
 import static okhttp3.internal.http2.Settings.INITIAL_WINDOW_SIZE;
 import static okhttp3.internal.http2.Settings.MAX_CONCURRENT_STREAMS;
 import static okhttp3.internal.http2.Settings.MAX_FRAME_SIZE;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.data.Offset.offset;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public final class Http2ConnectionTest {
   private final MockHttp2Peer peer = new MockHttp2Peer();
 
-  @Rule public final TestRule timeout = new Timeout(5_000);
+  @Rule public final TestRule timeout = new Timeout(5_000, TimeUnit.MILLISECONDS);
 
   @Before public void setup() {
     initializeInstanceForTests();
@@ -86,11 +89,11 @@ public final class Http2ConnectionTest {
 
     // verify the peer received what was expected
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
-    assertEquals(0, ping.streamId);
-    assertEquals(2, ping.payload1);
-    assertEquals(3, ping.payload2);
-    assertTrue(ping.ack);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
+    assertThat(ping.streamId).isEqualTo(0);
+    assertThat(ping.payload1).isEqualTo(2);
+    assertThat(ping.payload2).isEqualTo(3);
+    assertThat(ping.ack).isTrue();
   }
 
   @Test public void peerHttp2ServerLowersInitialWindowSize() throws Exception {
@@ -110,16 +113,16 @@ public final class Http2ConnectionTest {
 
     // Verify the peer received the second ACK.
     InFrame ackFrame = peer.takeFrame();
-    assertEquals(Http2.TYPE_SETTINGS, ackFrame.type);
-    assertEquals(0, ackFrame.streamId);
-    assertTrue(ackFrame.ack);
+    assertThat(ackFrame.type).isEqualTo(Http2.TYPE_SETTINGS);
+    assertThat(ackFrame.streamId).isEqualTo(0);
+    assertThat(ackFrame.ack).isTrue();
 
     // This stream was created *after* the connection settings were adjusted.
     Http2Stream stream = connection.newStream(headerEntries("a", "android"), false);
 
-    assertEquals(3368, connection.peerSettings.getInitialWindowSize());
+    assertThat(connection.peerSettings.getInitialWindowSize()).isEqualTo(3368);
     // New Stream is has the most recent initial window size.
-    assertEquals(3368, stream.bytesLeftInWriteWindow);
+    assertThat(stream.bytesLeftInWriteWindow).isEqualTo(3368);
   }
 
   @Test public void peerHttp2ServerZerosCompressionTable() throws Exception {
@@ -130,10 +133,10 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connectWithSettings(client, settings);
 
     // Verify the peer's settings were read and applied.
-    assertEquals(0, connection.peerSettings.getHeaderTableSize());
+    assertThat(connection.peerSettings.getHeaderTableSize()).isEqualTo(0);
     Http2Writer writer = connection.writer;
-    assertEquals(0, writer.hpackWriter.dynamicTableByteCount);
-    assertEquals(0, writer.hpackWriter.headerTableSizeSetting);
+    assertThat(writer.hpackWriter.dynamicTableByteCount).isEqualTo(0);
+    assertThat(writer.hpackWriter.headerTableSizeSetting).isEqualTo(0);
   }
 
   @Test public void peerHttp2ClientDisablesPush() throws Exception {
@@ -144,7 +147,7 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connectWithSettings(client, settings);
 
     // verify the peer's settings were read and applied.
-    assertFalse(connection.peerSettings.getEnablePush(true));
+    assertThat(connection.peerSettings.getEnablePush(true)).isFalse();
   }
 
   @Test public void peerIncreasesMaxFrameSize() throws Exception {
@@ -155,8 +158,8 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connectWithSettings(true, settings);
 
     // verify the peer's settings were read and applied.
-    assertEquals(newMaxFrameSize, connection.peerSettings.getMaxFrameSize(-1));
-    assertEquals(newMaxFrameSize, connection.writer.maxDataLength());
+    assertThat(connection.peerSettings.getMaxFrameSize(-1)).isEqualTo(newMaxFrameSize);
+    assertThat(connection.writer.maxDataLength()).isEqualTo(newMaxFrameSize);
   }
 
   /**
@@ -191,14 +194,14 @@ public final class Http2ConnectionTest {
     // Verify the peer received what was expected.
     peer.takeFrame(); // PING
     InFrame headers = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, headers.type);
+    assertThat(headers.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame data1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data1.type);
-    assertEquals(3, data1.streamId);
+    assertThat(data1.type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(data1.streamId).isEqualTo(3);
     assertTrue(Arrays.equals("abcde".getBytes(UTF_8), data1.data));
     InFrame data2 = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data2.type);
-    assertEquals(3, data2.streamId);
+    assertThat(data2.type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(data2.streamId).isEqualTo(3);
     assertTrue(Arrays.equals("fghi".getBytes(UTF_8), data2.data));
   }
 
@@ -223,16 +226,16 @@ public final class Http2ConnectionTest {
     Source source = stream1.getSource();
     Buffer buffer = new Buffer();
     while (buffer.size() != 1024) source.read(buffer, 1024);
-    stream1.close(ErrorCode.CANCEL);
+    stream1.close(ErrorCode.CANCEL, null);
 
     InFrame frame1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, frame1.type);
+    assertThat(frame1.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame frame2 = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, frame2.type);
+    assertThat(frame2.type).isEqualTo(Http2.TYPE_RST_STREAM);
     InFrame frame3 = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, frame3.type);
+    assertThat(frame3.type).isEqualTo(Http2.TYPE_RST_STREAM);
 
-    assertEquals(2048, connection.unacknowledgedBytesRead);
+    assertThat(connection.unacknowledgedBytesRead).isEqualTo(2048);
   }
 
   @Test public void receiveGoAwayHttp2() throws Exception {
@@ -260,7 +263,7 @@ public final class Http2ConnectionTest {
       sink2.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: REFUSED_STREAM", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: REFUSED_STREAM");
     }
     sink1.writeUtf8("def");
     sink1.close();
@@ -269,20 +272,20 @@ public final class Http2ConnectionTest {
       fail();
     } catch (ConnectionShutdownException expected) {
     }
-    assertTrue(stream1.isOpen());
-    assertFalse(stream2.isOpen());
-    assertEquals(1, connection.openStreamCount());
+    assertThat(stream1.isOpen()).isTrue();
+    assertThat(stream2.isOpen()).isFalse();
+    assertThat(connection.openStreamCount()).isEqualTo(1);
 
     // verify the peer received what was expected
     InFrame synStream1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream1.type);
+    assertThat(synStream1.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame synStream2 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream2.type);
+    assertThat(synStream2.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
     InFrame data1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data1.type);
-    assertEquals(3, data1.streamId);
+    assertThat(data1.type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(data1.streamId).isEqualTo(3);
     assertTrue(Arrays.equals("abcdef".getBytes(UTF_8), data1.data));
   }
 
@@ -310,26 +313,28 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connect(peer);
     connection.okHttpSettings.set(INITIAL_WINDOW_SIZE, windowSize);
     Http2Stream stream = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(0, stream.unacknowledgedBytesRead);
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.unacknowledgedBytesRead).isEqualTo(0);
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     Source in = stream.getSource();
     Buffer buffer = new Buffer();
     buffer.writeAll(in);
-    assertEquals(-1, in.read(buffer, 1));
-    assertEquals(150, buffer.size());
+    assertThat(in.read(buffer, 1)).isEqualTo(-1);
+    assertThat(buffer.size()).isEqualTo(150);
 
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     for (int i = 0; i < 3; i++) {
       List<Integer> windowUpdateStreamIds = new ArrayList<>(2);
       for (int j = 0; j < 2; j++) {
         InFrame windowUpdate = peer.takeFrame();
-        assertEquals(Http2.TYPE_WINDOW_UPDATE, windowUpdate.type);
+        assertThat(windowUpdate.type).isEqualTo(Http2.TYPE_WINDOW_UPDATE);
         windowUpdateStreamIds.add(windowUpdate.streamId);
-        assertEquals(windowUpdateThreshold, windowUpdate.windowSizeIncrement);
+        assertThat(windowUpdate.windowSizeIncrement).isEqualTo(windowUpdateThreshold);
       }
-      assertTrue(windowUpdateStreamIds.contains(0)); // connection
-      assertTrue(windowUpdateStreamIds.contains(3)); // stream
+      // connection
+      assertThat(windowUpdateStreamIds).contains(0);
+      // stream
+      assertThat(windowUpdateStreamIds).contains(3);
     }
   }
 
@@ -345,12 +350,12 @@ public final class Http2ConnectionTest {
     // Play it back.
     Http2Connection connection = connect(peer);
     Http2Stream client = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(-1, client.getSource().read(new Buffer(), 1));
+    assertThat(client.getSource().read(new Buffer(), 1)).isEqualTo(-1);
 
     // Verify the peer received what was expected.
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertEquals(5, peer.frameCount());
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.frameCount()).isEqualTo(5);
   }
 
   @Test public void clientSendsEmptyDataServerDoesntSendWindowUpdateHttp2() throws Exception {
@@ -371,9 +376,9 @@ public final class Http2ConnectionTest {
     out.close();
 
     // Verify the peer received what was expected.
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_DATA, peer.takeFrame().type);
-    assertEquals(5, peer.frameCount());
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(peer.frameCount()).isEqualTo(5);
   }
 
   @Test public void maxFrameSizeHonored() throws Exception {
@@ -398,11 +403,11 @@ public final class Http2ConnectionTest {
     out.close();
 
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame data = peer.takeFrame();
-    assertEquals(peer.maxOutboundDataLength(), data.data.length);
+    assertThat(data.data.length).isEqualTo(peer.maxOutboundDataLength());
     data = peer.takeFrame();
-    assertEquals(1, data.data.length);
+    assertThat(data.data.length).isEqualTo(1);
   }
 
   @Test public void pushPromiseStream() throws Exception {
@@ -411,14 +416,14 @@ public final class Http2ConnectionTest {
     peer.acceptFrame(); // ACK
     peer.acceptFrame(); // SYN_STREAM
     peer.sendFrame().headers(false, 3, headerEntries("a", "android"));
-    final List<Header> expectedRequestHeaders = Arrays.asList(
+    final List<Header> expectedRequestHeaders = asList(
         new Header(Header.TARGET_METHOD, "GET"),
         new Header(Header.TARGET_SCHEME, "https"),
         new Header(Header.TARGET_AUTHORITY, "squareup.com"),
         new Header(Header.TARGET_PATH, "/cached")
     );
     peer.sendFrame().pushPromise(3, 2, expectedRequestHeaders);
-    final List<Header> expectedResponseHeaders = Arrays.asList(
+    final List<Header> expectedResponseHeaders = asList(
         new Header(Header.RESPONSE_STATUS, "200")
     );
     peer.sendFrame().headers(true, 2, expectedResponseHeaders);
@@ -430,13 +435,13 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer, observer, REFUSE_INCOMING_STREAMS);
     Http2Stream client = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(-1, client.getSource().read(new Buffer(), 1));
+    assertThat(client.getSource().read(new Buffer(), 1)).isEqualTo(-1);
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
 
-    assertEquals(expectedRequestHeaders, observer.takeEvent());
-    assertEquals(expectedResponseHeaders, observer.takeEvent());
+    assertThat(observer.takeEvent()).isEqualTo(expectedRequestHeaders);
+    assertThat(observer.takeEvent()).isEqualTo(expectedResponseHeaders);
   }
 
   @Test public void doublePushPromise() throws Exception {
@@ -454,21 +459,21 @@ public final class Http2ConnectionTest {
     connection.newStream(headerEntries("b", "banana"), false);
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(ErrorCode.PROTOCOL_ERROR, peer.takeFrame().errorCode);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().errorCode).isEqualTo(ErrorCode.PROTOCOL_ERROR);
   }
 
   @Test public void pushPromiseStreamsAutomaticallyCancel() throws Exception {
     // write the mocking script
     peer.sendFrame().settings(new Settings());
     peer.acceptFrame(); // ACK
-    peer.sendFrame().pushPromise(3, 2, Arrays.asList(
+    peer.sendFrame().pushPromise(3, 2, asList(
         new Header(Header.TARGET_METHOD, "GET"),
         new Header(Header.TARGET_SCHEME, "https"),
         new Header(Header.TARGET_AUTHORITY, "squareup.com"),
         new Header(Header.TARGET_PATH, "/cached")
     ));
-    peer.sendFrame().headers(true, 2, Arrays.asList(
+    peer.sendFrame().headers(true, 2, asList(
         new Header(Header.RESPONSE_STATUS, "200")
     ));
     peer.acceptFrame(); // RST_STREAM
@@ -479,9 +484,9 @@ public final class Http2ConnectionTest {
 
     // verify the peer received what was expected
     InFrame rstStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, rstStream.type);
-    assertEquals(2, rstStream.streamId);
-    assertEquals(ErrorCode.CANCEL, rstStream.errorCode);
+    assertThat(rstStream.type).isEqualTo(Http2.TYPE_RST_STREAM);
+    assertThat(rstStream.streamId).isEqualTo(2);
+    assertThat(rstStream.errorCode).isEqualTo(ErrorCode.CANCEL);
   }
 
   /**
@@ -533,18 +538,18 @@ public final class Http2ConnectionTest {
     BufferedSink out = Okio.buffer(stream.getSink());
     out.writeUtf8("c3po");
     out.close();
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     assertStreamData("robot", stream.getSource());
     connection.writePingAndAwaitPong();
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.outFinished);
-    assertEquals(3, synStream.streamId);
-    assertEquals(-1, synStream.associatedStreamId);
-    assertEquals(headerEntries("b", "banana"), synStream.headerBlock);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.outFinished).isFalse();
+    assertThat(synStream.streamId).isEqualTo(3);
+    assertThat(synStream.associatedStreamId).isEqualTo(-1);
+    assertThat(synStream.headerBlock).isEqualTo(headerEntries("b", "banana"));
     InFrame requestData = peer.takeFrame();
     assertTrue(Arrays.equals("c3po".getBytes(UTF_8), requestData.data));
   }
@@ -563,17 +568,17 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("a", "artichaut"), false);
     connection.writePingAndAwaitPong();
-    assertEquals(Headers.of("headers", "bam"), stream.takeHeaders());
-    assertEquals(EMPTY_HEADERS, stream.trailers());
-    assertEquals(0, connection.openStreamCount());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("headers", "bam"));
+    assertThat(stream.trailers()).isEqualTo(EMPTY_HEADERS);
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.outFinished);
-    assertEquals(3, synStream.streamId);
-    assertEquals(-1, synStream.associatedStreamId);
-    assertEquals(headerEntries("a", "artichaut"), synStream.headerBlock);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.outFinished).isFalse();
+    assertThat(synStream.streamId).isEqualTo(3);
+    assertThat(synStream.associatedStreamId).isEqualTo(-1);
+    assertThat(synStream.headerBlock).isEqualTo(headerEntries("a", "artichaut"));
   }
 
   @Test public void serverWritesTrailersAndClientReadsTrailers() throws Exception {
@@ -590,18 +595,18 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("a", "artichaut"), false);
-    assertEquals(Headers.of("headers", "bam"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("headers", "bam"));
     connection.writePingAndAwaitPong();
-    assertEquals(Headers.of("trailers", "boom"), stream.trailers());
-    assertEquals(0, connection.openStreamCount());
+    assertThat(stream.trailers()).isEqualTo(Headers.of("trailers", "boom"));
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.outFinished);
-    assertEquals(3, synStream.streamId);
-    assertEquals(-1, synStream.associatedStreamId);
-    assertEquals(headerEntries("a", "artichaut"), synStream.headerBlock);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.outFinished).isFalse();
+    assertThat(synStream.streamId).isEqualTo(3);
+    assertThat(synStream.associatedStreamId).isEqualTo(-1);
+    assertThat(synStream.headerBlock).isEqualTo(headerEntries("a", "artichaut"));
   }
 
   @Test public void serverWritesTrailersWithData() throws Exception {
@@ -630,15 +635,15 @@ public final class Http2ConnectionTest {
 
     // Verify the peer received what was expected.
     InFrame headers1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, headers1.type);
+    assertThat(headers1.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame data1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data1.type);
-    assertEquals(3, data1.streamId);
-    assertTrue(Arrays.equals("abcdefghi".getBytes(UTF_8), data1.data));
-    assertEquals(false, data1.inFinished);
+    assertThat(data1.type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(data1.streamId).isEqualTo(3);
+    assertArrayEquals("abcdefghi".getBytes(UTF_8), data1.data);
+    assertThat(data1.inFinished).isFalse();
     InFrame headers2 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, headers2.type);
-    assertEquals(true, headers2.inFinished);
+    assertThat(headers2.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(headers2.inFinished).isTrue();
   }
 
   @Test public void clientCannotReadTrailersWithoutExhaustingStream() throws Exception {
@@ -721,18 +726,18 @@ public final class Http2ConnectionTest {
     Http2Stream stream = connection.newStream(headerEntries("a", "artichaut"), false);
     BufferedSource source = Okio.buffer(stream.getSource());
     connection.writePingAndAwaitPong();
-    assertEquals(Headers.of("headers", "bam"), stream.takeHeaders());
-    assertEquals("robot", source.readUtf8(5));
-    assertEquals(EMPTY_HEADERS, stream.trailers());
-    assertEquals(0, connection.openStreamCount());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("headers", "bam"));
+    assertThat(source.readUtf8(5)).isEqualTo("robot");
+    assertThat(stream.trailers()).isEqualTo(EMPTY_HEADERS);
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.outFinished);
-    assertEquals(3, synStream.streamId);
-    assertEquals(-1, synStream.associatedStreamId);
-    assertEquals(headerEntries("a", "artichaut"), synStream.headerBlock);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.outFinished).isFalse();
+    assertThat(synStream.streamId).isEqualTo(3);
+    assertThat(synStream.associatedStreamId).isEqualTo(-1);
+    assertThat(synStream.headerBlock).isEqualTo(headerEntries("a", "artichaut"));
   }
 
   @Test public void serverReadsHeadersDataHeaders() throws Exception {
@@ -755,20 +760,20 @@ public final class Http2ConnectionTest {
     out.close();
     stream.writeHeaders(headerEntries("e", "elephant"), false, false);
     connection.writePingAndAwaitPong();
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.outFinished);
-    assertEquals(3, synStream.streamId);
-    assertEquals(-1, synStream.associatedStreamId);
-    assertEquals(headerEntries("b", "banana"), synStream.headerBlock);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.outFinished).isFalse();
+    assertThat(synStream.streamId).isEqualTo(3);
+    assertThat(synStream.associatedStreamId).isEqualTo(-1);
+    assertThat(synStream.headerBlock).isEqualTo(headerEntries("b", "banana"));
     InFrame requestData = peer.takeFrame();
     assertTrue(Arrays.equals("c3po".getBytes(UTF_8), requestData.data));
 
     InFrame nextFrame = peer.takeFrame();
-    assertEquals(headerEntries("e", "elephant"), nextFrame.headerBlock);
+    assertThat(nextFrame.headerBlock).isEqualTo(headerEntries("e", "elephant"));
   }
 
   @Test public void clientCreatesStreamAndServerRepliesWithFin() throws Exception {
@@ -784,15 +789,15 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(1, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(1);
     connection.writePingAndAwaitPong(); // Ensure that the SYN_REPLY has been received.
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
   }
 
   @Test public void serverPingsClient() throws Exception {
@@ -808,10 +813,10 @@ public final class Http2ConnectionTest {
 
     // verify the peer received what was expected
     InFrame ping = peer.takeFrame();
-    assertEquals(0, ping.streamId);
-    assertEquals(2, ping.payload1);
-    assertEquals(0, ping.payload2);
-    assertTrue(ping.ack);
+    assertThat(ping.streamId).isEqualTo(0);
+    assertThat(ping.payload1).isEqualTo(2);
+    assertThat(ping.payload2).isEqualTo(0);
+    assertThat(ping.ack).isTrue();
   }
 
   @Test public void clientPingsServer() throws Exception {
@@ -827,16 +832,18 @@ public final class Http2ConnectionTest {
     long pingAtNanos = System.nanoTime();
     connection.writePingAndAwaitPong();
     long elapsedNanos = System.nanoTime() - pingAtNanos;
-    assertTrue(elapsedNanos > 0);
-    assertTrue(elapsedNanos < TimeUnit.SECONDS.toNanos(1));
+    assertThat(elapsedNanos).isGreaterThan(0L);
+    assertThat(elapsedNanos).isLessThan(TimeUnit.SECONDS.toNanos(1));
 
     // verify the peer received what was expected
     InFrame pingFrame = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, pingFrame.type);
-    assertEquals(0, pingFrame.streamId);
-    assertEquals(0x4f4b6f6b, pingFrame.payload1); // OkOk
-    assertEquals(0xf09f8da9, pingFrame.payload2); // donut
-    assertFalse(pingFrame.ack);
+    assertThat(pingFrame.type).isEqualTo(Http2.TYPE_PING);
+    assertThat(pingFrame.streamId).isEqualTo(0);
+    // OkOk
+    assertThat(pingFrame.payload1).isEqualTo(0x4f4b6f6b);
+    // donut
+    assertThat(pingFrame.payload2).isEqualTo(0xf09f8da9);
+    assertThat(pingFrame.ack).isFalse();
   }
 
   @Test public void unexpectedPingIsNotReturned() throws Exception {
@@ -855,9 +862,9 @@ public final class Http2ConnectionTest {
 
     // verify the peer received what was expected
     InFrame ping2 = peer.takeFrame();
-    assertEquals(2, ping2.payload1);
+    assertThat(ping2.payload1).isEqualTo(2);
     InFrame ping4 = peer.takeFrame();
-    assertEquals(4, ping4.payload1);
+    assertThat(ping4.payload1).isEqualTo(4);
   }
 
   @Test public void serverSendsSettingsToClient() throws Exception {
@@ -886,10 +893,10 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connect(peer, IGNORE, listener);
 
     synchronized (connection) {
-      assertEquals(10, connection.peerSettings.getMaxConcurrentStreams(-1));
+      assertThat(connection.peerSettings.getMaxConcurrentStreams(-1)).isEqualTo(10);
     }
     maxConcurrentStreamsUpdated.await();
-    assertEquals(10, maxConcurrentStreams.get());
+    assertThat(maxConcurrentStreams.get()).isEqualTo(10);
   }
 
   @Test public void multipleSettingsFramesAreMerged() throws Exception {
@@ -913,13 +920,13 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
 
-    assertEquals(Http2.TYPE_SETTINGS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_PING, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_SETTINGS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_PING);
     synchronized (connection) {
-      assertEquals(10000, connection.peerSettings.getHeaderTableSize());
-      assertEquals(40000, connection.peerSettings.getInitialWindowSize());
-      assertEquals(50000, connection.peerSettings.getMaxFrameSize(-1));
-      assertEquals(60000, connection.peerSettings.getMaxConcurrentStreams(-1));
+      assertThat(connection.peerSettings.getHeaderTableSize()).isEqualTo(10000);
+      assertThat(connection.peerSettings.getInitialWindowSize()).isEqualTo(40000);
+      assertThat(connection.peerSettings.getMaxFrameSize(-1)).isEqualTo(50000);
+      assertThat(connection.peerSettings.getMaxConcurrentStreams(-1)).isEqualTo(60000);
     }
   }
 
@@ -944,10 +951,11 @@ public final class Http2ConnectionTest {
     connection.readerRunnable.settings(true, settings2);
 
     synchronized (connection) {
-      assertEquals(-1, connection.peerSettings.getHeaderTableSize());
-      assertEquals(DEFAULT_INITIAL_WINDOW_SIZE, connection.peerSettings.getInitialWindowSize());
-      assertEquals(-1, connection.peerSettings.getMaxFrameSize(-1));
-      assertEquals(60000, connection.peerSettings.getMaxConcurrentStreams(-1));
+      assertThat(connection.peerSettings.getHeaderTableSize()).isEqualTo(-1);
+      assertThat(connection.peerSettings.getInitialWindowSize()).isEqualTo(
+          (long) DEFAULT_INITIAL_WINDOW_SIZE);
+      assertThat(connection.peerSettings.getMaxFrameSize(-1)).isEqualTo(-1);
+      assertThat(connection.peerSettings.getMaxConcurrentStreams(-1)).isEqualTo(60000);
     }
   }
 
@@ -966,11 +974,11 @@ public final class Http2ConnectionTest {
 
     // verify the peer received what was expected
     InFrame rstStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, rstStream.type);
-    assertEquals(41, rstStream.streamId);
-    assertEquals(ErrorCode.PROTOCOL_ERROR, rstStream.errorCode);
+    assertThat(rstStream.type).isEqualTo(Http2.TYPE_RST_STREAM);
+    assertThat(rstStream.streamId).isEqualTo(41);
+    assertThat(rstStream.errorCode).isEqualTo(ErrorCode.PROTOCOL_ERROR);
     InFrame ping = peer.takeFrame();
-    assertEquals(2, ping.payload1);
+    assertThat(ping.payload1).isEqualTo(2);
   }
 
   @Test public void bogusReplySilentlyIgnored() throws Exception {
@@ -987,7 +995,7 @@ public final class Http2ConnectionTest {
 
     // verify the peer received what was expected
     InFrame ping = peer.takeFrame();
-    assertEquals(2, ping.payload1);
+    assertThat(ping.payload1).isEqualTo(2);
   }
 
   @Test public void serverClosesClientOutputStream() throws Exception {
@@ -1010,7 +1018,7 @@ public final class Http2ConnectionTest {
       out.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: CANCEL", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: CANCEL");
     }
     try {
       out.close();
@@ -1018,15 +1026,15 @@ public final class Http2ConnectionTest {
     } catch (IOException expected) {
       // Close throws because buffered data wasn't flushed.
     }
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.inFinished);
-    assertFalse(synStream.outFinished);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.inFinished).isFalse();
+    assertThat(synStream.outFinished).isFalse();
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
   }
 
   /**
@@ -1050,25 +1058,25 @@ public final class Http2ConnectionTest {
       in.read(new Buffer(), 1);
       fail();
     } catch (IOException expected) {
-      assertEquals("stream closed", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream closed");
     }
     try {
       out.writeUtf8("a");
       out.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream finished", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream finished");
     }
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertTrue(synStream.inFinished);
-    assertFalse(synStream.outFinished);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.inFinished).isTrue();
+    assertThat(synStream.outFinished).isFalse();
     InFrame rstStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, rstStream.type);
-    assertEquals(ErrorCode.CANCEL, rstStream.errorCode);
+    assertThat(rstStream.type).isEqualTo(Http2.TYPE_RST_STREAM);
+    assertThat(rstStream.errorCode).isEqualTo(ErrorCode.CANCEL);
   }
 
   /**
@@ -1094,28 +1102,28 @@ public final class Http2ConnectionTest {
       source.read(new Buffer(), 1);
       fail();
     } catch (IOException expected) {
-      assertEquals("stream closed", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream closed");
     }
     out.writeUtf8("square");
     out.flush();
     out.close();
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertFalse(synStream.inFinished);
-    assertFalse(synStream.outFinished);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.inFinished).isFalse();
+    assertThat(synStream.outFinished).isFalse();
     InFrame data = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data.type);
+    assertThat(data.type).isEqualTo(Http2.TYPE_DATA);
     assertTrue(Arrays.equals("square".getBytes(UTF_8), data.data));
     InFrame fin = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, fin.type);
-    assertTrue(fin.inFinished);
-    assertFalse(fin.outFinished);
+    assertThat(fin.type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(fin.inFinished).isTrue();
+    assertThat(fin.outFinished).isFalse();
     InFrame rstStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, rstStream.type);
-    assertEquals(ErrorCode.CANCEL, rstStream.errorCode);
+    assertThat(rstStream.type).isEqualTo(Http2.TYPE_RST_STREAM);
+    assertThat(rstStream.errorCode).isEqualTo(ErrorCode.CANCEL);
   }
 
   @Test public void serverClosesClientInputStream() throws Exception {
@@ -1135,13 +1143,13 @@ public final class Http2ConnectionTest {
     Source source = stream.getSource();
     assertStreamData("square", source);
     connection.writePingAndAwaitPong(); // Ensure that inFinished has been received.
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertTrue(synStream.inFinished);
-    assertFalse(synStream.outFinished);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(synStream.inFinished).isTrue();
+    assertThat(synStream.outFinished).isFalse();
   }
 
   @Test public void remoteDoubleSynReply() throws Exception {
@@ -1158,14 +1166,14 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("c", "cola"), false);
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     connection.writePingAndAwaitPong(); // Ensure that the 2nd SYN REPLY has been received.
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
   }
 
   @Test public void remoteSendsDataAfterInFinished() throws Exception {
@@ -1184,18 +1192,18 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     assertStreamData("robot", stream.getSource());
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame rstStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, rstStream.type);
-    assertEquals(3, rstStream.streamId);
+    assertThat(rstStream.type).isEqualTo(Http2.TYPE_RST_STREAM);
+    assertThat(rstStream.streamId).isEqualTo(3);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
-    assertEquals(2, ping.payload1);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
+    assertThat(ping.payload1).isEqualTo(2);
   }
 
   @Test public void clientDoesNotLimitFlowControl() throws Exception {
@@ -1217,14 +1225,14 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("a", "android"), false);
-    assertEquals(Headers.of("b", "banana"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("b", "banana"));
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
-    assertEquals(2, ping.payload1);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
+    assertThat(ping.payload1).isEqualTo(2);
   }
 
   @Test public void remoteSendsRefusedStreamBeforeReplyHeaders() throws Exception {
@@ -1244,16 +1252,16 @@ public final class Http2ConnectionTest {
       stream.takeHeaders();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: REFUSED_STREAM", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: REFUSED_STREAM");
     }
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
-    assertEquals(2, ping.payload1);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
+    assertThat(ping.payload1).isEqualTo(2);
   }
 
   @Test public void receiveGoAway() throws Exception {
@@ -1281,7 +1289,7 @@ public final class Http2ConnectionTest {
       sink2.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: REFUSED_STREAM", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: REFUSED_STREAM");
     }
     sink1.writeUtf8("def");
     sink1.close();
@@ -1290,20 +1298,20 @@ public final class Http2ConnectionTest {
       fail();
     } catch (ConnectionShutdownException expected) {
     }
-    assertTrue(stream1.isOpen());
-    assertFalse(stream2.isOpen());
-    assertEquals(1, connection.openStreamCount());
+    assertThat(stream1.isOpen()).isTrue();
+    assertThat(stream2.isOpen()).isFalse();
+    assertThat(connection.openStreamCount()).isEqualTo(1);
 
     // verify the peer received what was expected
     InFrame synStream1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream1.type);
+    assertThat(synStream1.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame synStream2 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream2.type);
+    assertThat(synStream2.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
     InFrame data1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data1.type);
-    assertEquals(3, data1.streamId);
+    assertThat(data1.type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(data1.streamId).isEqualTo(3);
     assertTrue(Arrays.equals("abcdef".getBytes(UTF_8), data1.data));
   }
 
@@ -1328,18 +1336,18 @@ public final class Http2ConnectionTest {
     }
     connection.writePing(false, 0x01, 0x02);
     connection.shutdown(ErrorCode.PROTOCOL_ERROR);
-    assertEquals(1, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(1);
     connection.awaitPong(); // Prevent the peer from exiting prematurely.
 
     // verify the peer received what was expected
     InFrame synStream1 = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream1.type);
+    assertThat(synStream1.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame pingFrame = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, pingFrame.type);
+    assertThat(pingFrame.type).isEqualTo(Http2.TYPE_PING);
     InFrame goaway = peer.takeFrame();
-    assertEquals(Http2.TYPE_GOAWAY, goaway.type);
-    assertEquals(0, goaway.streamId);
-    assertEquals(ErrorCode.PROTOCOL_ERROR, goaway.errorCode);
+    assertThat(goaway.type).isEqualTo(Http2.TYPE_GOAWAY);
+    assertThat(goaway.streamId).isEqualTo(0);
+    assertThat(goaway.errorCode).isEqualTo(ErrorCode.PROTOCOL_ERROR);
   }
 
   @Test public void close() throws Exception {
@@ -1354,9 +1362,9 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("a", "android"), false);
-    assertEquals(1, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(1);
     connection.close();
-    assertEquals(0, connection.openStreamCount());
+    assertThat(connection.openStreamCount()).isEqualTo(0);
     try {
       connection.newStream(headerEntries("b", "banana"), false);
       fail();
@@ -1368,23 +1376,23 @@ public final class Http2ConnectionTest {
       sink.flush();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream finished", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream finished");
     }
     try {
       stream.getSource().read(new Buffer(), 1);
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: CANCEL", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("stream was reset: CANCEL");
     }
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame goaway = peer.takeFrame();
-    assertEquals(Http2.TYPE_GOAWAY, goaway.type);
+    assertThat(goaway.type).isEqualTo(Http2.TYPE_GOAWAY);
     InFrame rstStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_RST_STREAM, rstStream.type);
-    assertEquals(3, rstStream.streamId);
+    assertThat(rstStream.type).isEqualTo(Http2.TYPE_RST_STREAM);
+    assertThat(rstStream.streamId).isEqualTo(3);
   }
 
   @Test public void getResponseHeadersTimesOut() throws Exception {
@@ -1407,12 +1415,13 @@ public final class Http2ConnectionTest {
     }
     long elapsedNanos = System.nanoTime() - startNanos;
     awaitWatchdogIdle();
-    assertEquals(500d, TimeUnit.NANOSECONDS.toMillis(elapsedNanos), 200d /* 200ms delta */);
-    assertEquals(0, connection.openStreamCount());
+    /* 200ms delta */
+    assertThat((double) TimeUnit.NANOSECONDS.toMillis(elapsedNanos)).isCloseTo(500d, offset(200d));
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_RST_STREAM, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_RST_STREAM);
   }
 
   @Test public void readTimesOut() throws Exception {
@@ -1437,12 +1446,13 @@ public final class Http2ConnectionTest {
     }
     long elapsedNanos = System.nanoTime() - startNanos;
     awaitWatchdogIdle();
-    assertEquals(500d, TimeUnit.NANOSECONDS.toMillis(elapsedNanos), 200d /* 200ms delta */);
-    assertEquals(0, connection.openStreamCount());
+    /* 200ms delta */
+    assertThat((double) TimeUnit.NANOSECONDS.toMillis(elapsedNanos)).isCloseTo(500d, offset(200d));
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_RST_STREAM, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_RST_STREAM);
   }
 
   @Test public void writeTimesOutAwaitingStreamWindow() throws Exception {
@@ -1476,14 +1486,15 @@ public final class Http2ConnectionTest {
     }
     long elapsedNanos = System.nanoTime() - startNanos;
     awaitWatchdogIdle();
-    assertEquals(500d, TimeUnit.NANOSECONDS.toMillis(elapsedNanos), 200d /* 200ms delta */);
-    assertEquals(0, connection.openStreamCount());
+    /* 200ms delta */
+    assertThat((double) TimeUnit.NANOSECONDS.toMillis(elapsedNanos)).isCloseTo(500d, offset(200d));
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_PING, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_DATA, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_RST_STREAM, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_PING);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_RST_STREAM);
   }
 
   @Test public void writeTimesOutAwaitingConnectionWindow() throws Exception {
@@ -1520,15 +1531,16 @@ public final class Http2ConnectionTest {
     }
     long elapsedNanos = System.nanoTime() - startNanos;
     awaitWatchdogIdle();
-    assertEquals(500d, TimeUnit.NANOSECONDS.toMillis(elapsedNanos), 200d /* 200ms delta */);
-    assertEquals(0, connection.openStreamCount());
+    /* 200ms delta */
+    assertThat((double) TimeUnit.NANOSECONDS.toMillis(elapsedNanos)).isCloseTo(500d, offset(200d));
+    assertThat(connection.openStreamCount()).isEqualTo(0);
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_PING, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_PING, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_DATA, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_RST_STREAM, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_PING);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_PING);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_RST_STREAM);
   }
 
   @Test public void outgoingWritesAreBatched() throws Exception {
@@ -1551,11 +1563,11 @@ public final class Http2ConnectionTest {
     sink.close();
 
     // verify the peer received one incoming frame
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame data = peer.takeFrame();
-    assertEquals(Http2.TYPE_DATA, data.type);
+    assertThat(data.type).isEqualTo(Http2.TYPE_DATA);
     assertTrue(Arrays.equals("abcdefghij".getBytes(UTF_8), data.data));
-    assertTrue(data.inFinished);
+    assertThat(data.inFinished).isTrue();
   }
 
   @Test public void headers() throws Exception {
@@ -1573,14 +1585,14 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("b", "banana"), true);
     connection.writePingAndAwaitPong(); // Ensure that the HEADERS has been received.
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
-    assertEquals(Headers.of("c", "c3po"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("c", "c3po"));
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame ping = peer.takeFrame();
-    assertEquals(Http2.TYPE_PING, ping.type);
+    assertThat(ping.type).isEqualTo(Http2.TYPE_PING);
   }
 
   @Test public void readMultipleSetsOfResponseHeaders() throws Exception {
@@ -1598,13 +1610,13 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("b", "banana"), true);
     stream.getConnection().flush();
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     connection.writePingAndAwaitPong();
-    assertEquals(Headers.of("c", "cola"), stream.trailers());
+    assertThat(stream.trailers()).isEqualTo(Headers.of("c", "cola"));
 
     // verify the peer received what was expected
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_PING, peer.takeFrame().type);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_PING);
   }
 
   @Test public void readSendsWindowUpdate() throws Exception {
@@ -1631,26 +1643,28 @@ public final class Http2ConnectionTest {
     Http2Connection connection = connect(peer);
     connection.okHttpSettings.set(INITIAL_WINDOW_SIZE, windowSize);
     Http2Stream stream = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(0, stream.unacknowledgedBytesRead);
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.unacknowledgedBytesRead).isEqualTo(0);
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     Source in = stream.getSource();
     Buffer buffer = new Buffer();
     buffer.writeAll(in);
-    assertEquals(-1, in.read(buffer, 1));
-    assertEquals(150, buffer.size());
+    assertThat(in.read(buffer, 1)).isEqualTo(-1);
+    assertThat(buffer.size()).isEqualTo(150);
 
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     for (int i = 0; i < 3; i++) {
       List<Integer> windowUpdateStreamIds = new ArrayList<>(2);
       for (int j = 0; j < 2; j++) {
         InFrame windowUpdate = peer.takeFrame();
-        assertEquals(Http2.TYPE_WINDOW_UPDATE, windowUpdate.type);
+        assertThat(windowUpdate.type).isEqualTo(Http2.TYPE_WINDOW_UPDATE);
         windowUpdateStreamIds.add(windowUpdate.streamId);
-        assertEquals(windowUpdateThreshold, windowUpdate.windowSizeIncrement);
+        assertThat(windowUpdate.windowSizeIncrement).isEqualTo(windowUpdateThreshold);
       }
-      assertTrue(windowUpdateStreamIds.contains(0)); // connection
-      assertTrue(windowUpdateStreamIds.contains(3)); // stream
+      // connection
+      assertThat(windowUpdateStreamIds).contains(0);
+      // stream
+      assertThat(windowUpdateStreamIds).contains(3);
     }
   }
 
@@ -1666,12 +1680,12 @@ public final class Http2ConnectionTest {
     // Play it back.
     Http2Connection connection = connect(peer);
     Http2Stream client = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(-1, client.getSource().read(new Buffer(), 1));
+    assertThat(client.getSource().read(new Buffer(), 1)).isEqualTo(-1);
 
     // Verify the peer received what was expected.
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
-    assertEquals(5, peer.frameCount());
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.frameCount()).isEqualTo(5);
   }
 
   @Test public void clientSendsEmptyDataServerDoesntSendWindowUpdate() throws Exception {
@@ -1692,9 +1706,9 @@ public final class Http2ConnectionTest {
     out.close();
 
     // Verify the peer received what was expected.
-    assertEquals(Http2.TYPE_HEADERS, peer.takeFrame().type);
-    assertEquals(Http2.TYPE_DATA, peer.takeFrame().type);
-    assertEquals(5, peer.frameCount());
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_HEADERS);
+    assertThat(peer.takeFrame().type).isEqualTo(Http2.TYPE_DATA);
+    assertThat(peer.frameCount()).isEqualTo(5);
   }
 
   @Test public void testTruncatedDataFrame() throws Exception {
@@ -1710,13 +1724,12 @@ public final class Http2ConnectionTest {
     // play it back
     Http2Connection connection = connect(peer);
     Http2Stream stream = connection.newStream(headerEntries("b", "banana"), false);
-    assertEquals(Headers.of("a", "android"), stream.takeHeaders());
+    assertThat(stream.takeHeaders()).isEqualTo(Headers.of("a", "android"));
     Source in = stream.getSource();
     try {
       Okio.buffer(in).readByteString(101);
       fail();
-    } catch (IOException expected) {
-      assertEquals("stream was reset: PROTOCOL_ERROR", expected.getMessage());
+    } catch (EOFException expected) {
     }
   }
 
@@ -1742,14 +1755,14 @@ public final class Http2ConnectionTest {
     out1.flush();
 
     // Check that we've filled the window for both the stream and also the connection.
-    assertEquals(0, connection.bytesLeftInWriteWindow);
-    assertEquals(0, connection.getStream(3).bytesLeftInWriteWindow);
+    assertThat(connection.bytesLeftInWriteWindow).isEqualTo(0);
+    assertThat(connection.getStream(3).bytesLeftInWriteWindow).isEqualTo(0);
 
     // receiving a window update on the connection will unblock new streams.
     connection.readerRunnable.windowUpdate(0, 3);
 
-    assertEquals(3, connection.bytesLeftInWriteWindow);
-    assertEquals(0, connection.getStream(3).bytesLeftInWriteWindow);
+    assertThat(connection.bytesLeftInWriteWindow).isEqualTo(3);
+    assertThat(connection.getStream(3).bytesLeftInWriteWindow).isEqualTo(0);
 
     // Another stream should be able to send data even though 1 is blocked.
     Http2Stream stream2 = connection.newStream(headerEntries("b", "banana"), true);
@@ -1757,9 +1770,10 @@ public final class Http2ConnectionTest {
     out2.writeUtf8("foo");
     out2.flush();
 
-    assertEquals(0, connection.bytesLeftInWriteWindow);
-    assertEquals(0, connection.getStream(3).bytesLeftInWriteWindow);
-    assertEquals(DEFAULT_INITIAL_WINDOW_SIZE - 3, connection.getStream(5).bytesLeftInWriteWindow);
+    assertThat(connection.bytesLeftInWriteWindow).isEqualTo(0);
+    assertThat(connection.getStream(3).bytesLeftInWriteWindow).isEqualTo(0);
+    assertThat(connection.getStream(5).bytesLeftInWriteWindow).isEqualTo(
+        (long) (DEFAULT_INITIAL_WINDOW_SIZE - 3));
   }
 
   @Test public void remoteOmitsInitialSettings() throws Exception {
@@ -1779,15 +1793,15 @@ public final class Http2ConnectionTest {
       stream.takeHeaders();
       fail();
     } catch (IOException expected) {
-      assertEquals("stream was reset: PROTOCOL_ERROR", expected.getMessage());
+      assertThat(expected.getMessage()).isEqualTo("Expected a SETTINGS frame but was 1");
     }
 
     // verify the peer received what was expected
     InFrame synStream = peer.takeFrame();
-    assertEquals(Http2.TYPE_HEADERS, synStream.type);
+    assertThat(synStream.type).isEqualTo(Http2.TYPE_HEADERS);
     InFrame goaway = peer.takeFrame();
-    assertEquals(Http2.TYPE_GOAWAY, goaway.type);
-    assertEquals(ErrorCode.PROTOCOL_ERROR, goaway.errorCode);
+    assertThat(goaway.type).isEqualTo(Http2.TYPE_GOAWAY);
+    assertThat(goaway.errorCode).isEqualTo(ErrorCode.PROTOCOL_ERROR);
   }
 
   private Buffer data(int byteCount) {
@@ -1796,12 +1810,12 @@ public final class Http2ConnectionTest {
 
   private void assertStreamData(String expected, Source source) throws IOException {
     String actual = Okio.buffer(source).readUtf8();
-    assertEquals(expected, actual);
+    assertThat(actual).isEqualTo(expected);
   }
 
   /** Reads {@code prefix} from {@code source}. */
   private void assertStreamPrefix(String prefix, BufferedSource source) throws IOException {
-    assertEquals(prefix, source.readUtf8(Utf8.size(prefix)));
+    assertThat(source.readUtf8(Utf8.size(prefix))).isEqualTo(prefix);
   }
 
   /**
@@ -1849,9 +1863,9 @@ public final class Http2ConnectionTest {
 
     // verify the peer received the ACK
     InFrame ackFrame = peer.takeFrame();
-    assertEquals(Http2.TYPE_SETTINGS, ackFrame.type);
-    assertEquals(0, ackFrame.streamId);
-    assertTrue(ackFrame.ack);
+    assertThat(ackFrame.type).isEqualTo(Http2.TYPE_SETTINGS);
+    assertThat(ackFrame.streamId).isEqualTo(0);
+    assertThat(ackFrame.ack).isTrue();
 
     return connection;
   }
@@ -1887,7 +1901,7 @@ public final class Http2ConnectionTest {
     }
 
     @Override public synchronized boolean onRequest(int streamId, List<Header> requestHeaders) {
-      assertEquals(2, streamId);
+      assertThat(streamId).isEqualTo(2);
       events.add(requestHeaders);
       notifyAll();
       return false;
@@ -1895,8 +1909,8 @@ public final class Http2ConnectionTest {
 
     @Override public synchronized boolean onHeaders(
         int streamId, List<Header> responseHeaders, boolean last) {
-      assertEquals(2, streamId);
-      assertTrue(last);
+      assertThat(streamId).isEqualTo(2);
+      assertThat(last).isTrue();
       events.add(responseHeaders);
       notifyAll();
       return false;

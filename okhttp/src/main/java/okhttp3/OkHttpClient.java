@@ -138,10 +138,6 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
         builder.addLenient(name, value);
       }
 
-      @Override public void setCache(OkHttpClient.Builder builder, InternalCache internalCache) {
-        builder.setInternalCache(internalCache);
-      }
-
       @Override public RealConnectionPool realConnectionPool(ConnectionPool connectionPool) {
         return connectionPool.delegate;
       }
@@ -157,10 +153,6 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
       @Override
       public void apply(ConnectionSpec tlsConfiguration, SSLSocket sslSocket, boolean isFallback) {
         tlsConfiguration.apply(sslSocket, isFallback);
-      }
-
-      @Override public boolean isInvalidHttpUrlHost(IllegalArgumentException e) {
-        return e.getMessage().startsWith(HttpUrl.Builder.INVALID_HOST);
       }
 
       @Override public Call newWebSocketCall(OkHttpClient client, Request originalRequest) {
@@ -700,12 +692,6 @@ public class OkHttpClient implements Cloneable, Call.Factory, WebSocket.Factory 
       if (cookieJar == null) throw new NullPointerException("cookieJar == null");
       this.cookieJar = cookieJar;
       return this;
-    }
-
-    /** Sets the response cache to be used to read and write cached responses. */
-    void setInternalCache(@Nullable InternalCache internalCache) {
-      this.internalCache = internalCache;
-      this.cache = null;
     }
 
     /** Sets the response cache to be used to read and write cached responses. */

@@ -56,6 +56,8 @@ import okio.ByteString;
 import okio.Options;
 import okio.Source;
 
+import static java.util.Arrays.asList;
+
 /** Junk drawer of utility methods. */
 public final class Util {
   public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
@@ -235,7 +237,7 @@ public final class Util {
 
   /** Returns an immutable list containing {@code elements}. */
   public static <T> List<T> immutableList(T... elements) {
-    return Collections.unmodifiableList(Arrays.asList(elements.clone()));
+    return Collections.unmodifiableList(asList(elements.clone()));
   }
 
   public static ThreadFactory threadFactory(String name, boolean daemon) {

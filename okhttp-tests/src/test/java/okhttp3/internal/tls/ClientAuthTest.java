@@ -42,13 +42,13 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
+import static java.util.Arrays.asList;
 import static okhttp3.TestUtil.defaultClient;
 import static okhttp3.internal.platform.PlatformTest.getJvmSpecVersion;
 import static okhttp3.internal.platform.PlatformTest.getPlatform;
 import static okhttp3.tls.internal.TlsUtil.newKeyManager;
 import static okhttp3.tls.internal.TlsUtil.newTrustManager;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeFalse;
 
@@ -118,9 +118,11 @@ public final class ClientAuthTest {
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     Response response = call.execute();
-    assertEquals(new X500Principal("CN=Local Host"), response.handshake().peerPrincipal());
-    assertEquals(new X500Principal("CN=Jethro Willis"), response.handshake().localPrincipal());
-    assertEquals("abc", response.body().string());
+    assertThat(response.handshake().peerPrincipal()).isEqualTo(
+        new X500Principal("CN=Local Host"));
+    assertThat(response.handshake().localPrincipal()).isEqualTo(
+        new X500Principal("CN=Jethro Willis"));
+    assertThat(response.body().string()).isEqualTo("abc");
   }
 
   @Test public void clientAuthForNeeds() throws Exception {
@@ -134,9 +136,11 @@ public final class ClientAuthTest {
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     Response response = call.execute();
-    assertEquals(new X500Principal("CN=Local Host"), response.handshake().peerPrincipal());
-    assertEquals(new X500Principal("CN=Jethro Willis"), response.handshake().localPrincipal());
-    assertEquals("abc", response.body().string());
+    assertThat(response.handshake().peerPrincipal()).isEqualTo(
+        new X500Principal("CN=Local Host"));
+    assertThat(response.handshake().localPrincipal()).isEqualTo(
+        new X500Principal("CN=Jethro Willis"));
+    assertThat(response.body().string()).isEqualTo("abc");
   }
 
   @Test public void clientAuthSkippedForNone() throws Exception {
@@ -150,9 +154,10 @@ public final class ClientAuthTest {
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     Response response = call.execute();
-    assertEquals(new X500Principal("CN=Local Host"), response.handshake().peerPrincipal());
-    assertEquals(null, response.handshake().localPrincipal());
-    assertEquals("abc", response.body().string());
+    assertThat(response.handshake().peerPrincipal()).isEqualTo(
+        new X500Principal("CN=Local Host"));
+    assertThat(response.handshake().localPrincipal()).isNull();
+    assertThat(response.body().string()).isEqualTo("abc");
   }
 
   @Test public void missingClientAuthSkippedForWantsOnly() throws Exception {
@@ -166,9 +171,10 @@ public final class ClientAuthTest {
 
     Call call = client.newCall(new Request.Builder().url(server.url("/")).build());
     Response response = call.execute();
-    assertEquals(new X500Principal("CN=Local Host"), response.handshake().peerPrincipal());
-    assertEquals(null, response.handshake().localPrincipal());
-    assertEquals("abc", response.body().string());
+    assertThat(response.handshake().peerPrincipal()).isEqualTo(
+        new X500Principal("CN=Local Host"));
+    assertThat(response.handshake().localPrincipal()).isNull();
+    assertThat(response.body().string()).isEqualTo("abc");
   }
 
   @Test public void missingClientAuthFailsForNeeds() throws Exception {
@@ -191,9 +197,9 @@ public final class ClientAuthTest {
     } catch (SSLHandshakeException expected) {
     } catch (SSLException expected) {
       String jvmVersion = System.getProperty("java.specification.version");
-      assertEquals("11", jvmVersion);
+      assertThat(jvmVersion).isEqualTo("11");
     } catch (SocketException expected) {
-      assertEquals("jdk9", getPlatform());
+      assertThat(getPlatform()).isEqualTo("jdk9");
     }
   }
 
@@ -247,9 +253,9 @@ public final class ClientAuthTest {
     } catch (SSLException expected) {
       // javax.net.ssl.SSLException: readRecord
       String jvmVersion = System.getProperty("java.specification.version");
-      assertEquals("11", jvmVersion);
+      assertThat(jvmVersion).isEqualTo("11");
     } catch (SocketException expected) {
-      assertEquals("jdk9", getPlatform());
+      assertThat(getPlatform()).isEqualTo("jdk9");
     }
   }
 
@@ -276,7 +282,7 @@ public final class ClientAuthTest {
       X509KeyManager keyManager = newKeyManager(
           null, serverCert, serverIntermediateCa.certificate());
       X509TrustManager trustManager = newTrustManager(
-          null, Arrays.asList(serverRootCa.certificate(), clientRootCa.certificate()));
+          null, asList(serverRootCa.certificate(), clientRootCa.certificate()));
       SSLContext sslContext = SSLContext.getInstance("TLS");
       sslContext.init(new KeyManager[] {keyManager}, new TrustManager[] {trustManager},
           new SecureRandom());

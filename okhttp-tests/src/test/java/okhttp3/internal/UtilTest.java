@@ -33,16 +33,16 @@ import static org.junit.Assert.fail;
   }
 
   @Test public void immutableMap() {
-    Map<String, String> map = new LinkedHashMap<>();
-    map.put("a", "A");
-    Map<String, String> immutableCopy = Util.immutableMap(map);
-    assertEquals(immutableCopy, Collections.singletonMap("a", "A"));
-    map.clear();
-    assertEquals(immutableCopy, Collections.singletonMap("a", "A"));
-    try {
-      immutableCopy.clear();
-      fail();
-    } catch (UnsupportedOperationException expected) {
-    }
+      Map<String, String> map = new LinkedHashMap<>();
+      map.put("a", "A");
+      Map<String, String> immutableCopy = Util.immutableMap(map);
+      assertEquals(immutableCopy, Collections.singletonMap("a", "A"));
+      map.clear();
+      assertEquals(immutableCopy, Collections.singletonMap("a", "A"));
+      try {
+          immutableCopy.clear();
+          fail();
+      } catch (UnsupportedOperationException expected) {
+      }
   }
 }

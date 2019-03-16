@@ -27,7 +27,6 @@ import okhttp3.Response;
 import okhttp3.internal.Internal;
 import okhttp3.internal.Util;
 import okhttp3.internal.connection.RealConnection;
-import okhttp3.internal.duplex.DuplexRequestBody;
 import okhttp3.internal.http.ExchangeCodec;
 import okhttp3.internal.http.HttpHeaders;
 import okhttp3.internal.http.RequestLine;
@@ -91,8 +90,8 @@ public final class Http1ExchangeCodec implements ExchangeCodec {
    */
   private Headers trailers;
 
-  public Http1ExchangeCodec(OkHttpClient client, RealConnection realConnection, BufferedSource source,
-      BufferedSink sink) {
+  public Http1ExchangeCodec(OkHttpClient client, RealConnection realConnection,
+      BufferedSource source, BufferedSink sink) {
     this.client = client;
     this.realConnection = realConnection;
     this.source = source;
@@ -104,7 +103,7 @@ public final class Http1ExchangeCodec implements ExchangeCodec {
   }
 
   @Override public Sink createRequestBody(Request request, long contentLength) throws IOException {
-    if (request.body() instanceof DuplexRequestBody) {
+    if (request.body() != null && request.body().isDuplex()) {
       throw new ProtocolException("Duplex connections are not supported for HTTP/1");
     }
 
